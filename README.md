@@ -1,2 +1,2 @@
-# auth-wrapper
-Auth package for a standard auth interface across microservices
+# auth-library
+Auth library for a standard auth interface across microservices
