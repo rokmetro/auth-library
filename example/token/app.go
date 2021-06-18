@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	authlib "rokmetro.com/auth-lib"
+	"rokmetro.com/auth-lib/authlib"
 )
 
 type WebAdapter struct {
@@ -54,7 +54,7 @@ func (we WebAdapter) tokenAuthWrapFunc(handler http.HandlerFunc, permissions []s
 			return
 		}
 
-		log.Printf("Authentication successfuly for user: %v", claims)
+		log.Printf("Authentication successful for user: %v", claims)
 		handler(w, req)
 	}
 }

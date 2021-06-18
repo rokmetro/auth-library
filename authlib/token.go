@@ -49,88 +49,6 @@ func (a *TokenAuth) CheckToken(token string, tokenType string) (map[string]inter
 	return claims, nil
 }
 
-// ValidateCsrfTokenClaims will validate that the CSRF token claims appropriately match the access token claims
-func ValidateCsrfTokenClaims(accessClaims jwt.MapClaims, csrfClaims jwt.MapClaims) error {
-	userID, ok := accessClaims["user_id"].(string)
-	if !ok {
-		return fmt.Errorf("error parsing user id from access claims")
-	}
-
-	clientID, ok := accessClaims["client_id"].(string)
-	if !ok {
-		return fmt.Errorf("error parsing client id from access claims")
-	}
-
-	err := ValidateTokenClaim(csrfClaims, "user_id", userID)
-	if err != nil {
-		return err
-	}
-
-	err = ValidateTokenClaim(csrfClaims, "client_id", clientID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// ValidateAccessTokenClaims will validate that the access token contains the required claims
-func ValidateAccessTokenClaims(accessClaims jwt.MapClaims) error {
-	// TODO: refactor to return standardized claims struct
-	_, ok := accessClaims["user_id"].(string)
-	if !ok {
-		return fmt.Errorf("error parsing user id from access claims")
-	}
-
-	_, ok = accessClaims["client_id"].(string)
-	if !ok {
-		return fmt.Errorf("error parsing client id from access claims")
-	}
-
-	return nil
-}
-
-// ValidateTokenClaim will validate that the provided token claims contain a claim matching the value provided
-func ValidateTokenClaim(claims jwt.MapClaims, field string, value interface{}) error {
-	claim, ok := claims[field]
-	if !ok {
-		return fmt.Errorf("claim not found: %s", field)
-	}
-
-	if claim != value {
-		return fmt.Errorf("claim %s = %v does not match %v", field, claim, value)
-	}
-
-	return nil
-}
-
-// ValidatePermissionsClaim will validate that the provided token claims contain one or more of the required permissions
-func ValidatePermissionsClaim(claims jwt.MapClaims, requiredPermissions []string) error {
-	if len(requiredPermissions) == 0 {
-		return nil
-	}
-
-	permissionsString, ok := claims["permissions"].(string)
-	if !ok {
-		return errors.New("claims do not contain permissions")
-	}
-
-	found := false
-	permissions := strings.Split(permissionsString, ",")
-	for _, v := range requiredPermissions {
-		if containsString(permissions, v) {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return fmt.Errorf("required permissions not found: required %v, found %s", requiredPermissions, permissionsString)
-	}
-
-	return nil
-}
-
 // CheckRequestTokens is a convenience function which retrieves and checks any tokens included in a request
 // and returns the access token claims
 // Mobile Clients/Secure Servers: Access tokens must be provided as a Bearer token
@@ -176,6 +94,88 @@ func NewTokenAuth(authService *AuthService) *TokenAuth {
 }
 
 // -------------------------- Helper Functions --------------------------
+
+// ValidateAccessTokenClaims will validate that the access token contains the required claims
+func ValidateAccessTokenClaims(accessClaims jwt.MapClaims) error {
+	// TODO: refactor to return standardized claims struct
+	_, ok := accessClaims["user_id"].(string)
+	if !ok {
+		return fmt.Errorf("error parsing user id from access claims")
+	}
+
+	_, ok = accessClaims["client_id"].(string)
+	if !ok {
+		return fmt.Errorf("error parsing client id from access claims")
+	}
+
+	return nil
+}
+
+// ValidateCsrfTokenClaims will validate that the CSRF token claims appropriately match the access token claims
+func ValidateCsrfTokenClaims(accessClaims jwt.MapClaims, csrfClaims jwt.MapClaims) error {
+	userID, ok := accessClaims["user_id"].(string)
+	if !ok {
+		return fmt.Errorf("error parsing user id from access claims")
+	}
+
+	clientID, ok := accessClaims["client_id"].(string)
+	if !ok {
+		return fmt.Errorf("error parsing client id from access claims")
+	}
+
+	err := ValidateTokenClaim(csrfClaims, "user_id", userID)
+	if err != nil {
+		return err
+	}
+
+	err = ValidateTokenClaim(csrfClaims, "client_id", clientID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidateTokenClaim will validate that the provided token claims contain a claim matching the value provided
+func ValidateTokenClaim(claims jwt.MapClaims, field string, value interface{}) error {
+	claim, ok := claims[field]
+	if !ok {
+		return fmt.Errorf("claim not found: %s", field)
+	}
+
+	if claim != value {
+		return fmt.Errorf("claim %s = %v does not match %v", field, claim, value)
+	}
+
+	return nil
+}
+
+// ValidatePermissionsClaim will validate that the provided token claims contain one or more of the required permissions
+func ValidatePermissionsClaim(claims jwt.MapClaims, requiredPermissions []string) error {
+	if len(requiredPermissions) == 0 {
+		return nil
+	}
+
+	permissionsString, ok := claims["permissions"].(string)
+	if !ok {
+		return errors.New("claims do not contain permissions")
+	}
+
+	found := false
+	permissions := strings.Split(permissionsString, ",")
+	for _, v := range requiredPermissions {
+		if containsString(permissions, v) {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("required permissions not found: required %v, found %s", requiredPermissions, permissionsString)
+	}
+
+	return nil
+}
 
 // GetRequestTokens retrieves tokens from the request headers and/or cookies
 // Mobile Clients/Secure Servers: Access tokens must be provided as a Bearer token
