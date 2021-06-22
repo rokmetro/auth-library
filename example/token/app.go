@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"rokmetro.com/auth-lib/authlib"
+	"github.com/rokmetro/auth-lib/authlib"
 )
 
 type WebAdapter struct {

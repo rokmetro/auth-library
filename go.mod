@@ -1,4 +1,4 @@
-module rokmetro.com/auth-lib
+module github.com/rokmetro/auth-lib
 
 go 1.14
 

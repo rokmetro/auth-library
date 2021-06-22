@@ -9,41 +9,71 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
+type Claims struct {
+	// Required Standard Claims: sub, exp, iat
+	jwt.StandardClaims
+	ClientID    string `json:"client_id" validate:"required"`
+	Purpose     string `json:"purpose" validate:"required"`
+	Permissions string `json:"permissions"`
+	Groups      string `json:"groups"`
+}
+
 // TokenAuth contains configurations and helper functions required to validate tokens
 type TokenAuth struct {
 	authService *AuthService
 }
 
-// CheckToken the provided access token and returns the token claims
-func (a *TokenAuth) CheckToken(token string, tokenType string) (map[string]interface{}, error) {
+// CheckToken validates the provided token and returns the token claims
+func (a *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	authPubKey, err := a.authService.GetPubKey("auth")
 	if authPubKey == nil || authPubKey.Key == nil {
 		return nil, fmt.Errorf("failed to retrieve auth service pub key: %v", err)
 	}
 
-	parsedToken, err := new(jwt.Parser).ParseWithClaims(token, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
+	parsedToken, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return authPubKey.Key, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse access token: %v", err)
+		return nil, fmt.Errorf("failed to parse token: %v", err)
 	}
 
-	claims, ok := parsedToken.Claims.(jwt.MapClaims)
+	if !parsedToken.Valid {
+		return nil, errors.New("token invalid")
+	}
+
+	claims, ok := parsedToken.Claims.(*Claims)
 	if !ok {
-		return nil, errors.New("failed to parse access token claims")
+		return nil, errors.New("failed to parse token claims")
 	}
 
-	if claims["type"] != tokenType {
-		return nil, fmt.Errorf("token type (%v) does not match %s", claims["type"], tokenType)
+	// Check token claims
+	if claims.Subject == "" {
+		return nil, errors.New("token sub missing")
 	}
-	if claims["iss"] != authPubKey.Issuer {
-		return nil, fmt.Errorf("token issuer (%v) does not match %s", claims["iss"], authPubKey.Issuer)
+	if claims.ExpiresAt == 0 {
+		return nil, errors.New("token exp missing")
 	}
-	if claims["alg"] != authPubKey.Alg {
-		return nil, fmt.Errorf("token alg (%v) does not match %s", claims["alg"], authPubKey.Alg)
+	if claims.IssuedAt == 0 {
+		return nil, errors.New("token iat missing")
 	}
-	if claims["kid"] != authPubKey.Kid {
-		return nil, fmt.Errorf("token KID (%v) does not match %s", claims["kid"], authPubKey.Kid)
+	if claims.ClientID == "" {
+		return nil, errors.New("token client_id missing")
+	}
+	if claims.Issuer != authPubKey.Issuer {
+		return nil, fmt.Errorf("token issuer (%v) does not match %s", claims.Issuer, authPubKey.Issuer)
+	}
+	if claims.Purpose != purpose {
+		return nil, fmt.Errorf("token purpose (%v) does not match %s", claims.Purpose, purpose)
+	}
+
+	// Check token headers
+	alg, _ := parsedToken.Header["alg"].(string)
+	if alg != authPubKey.Alg {
+		return nil, fmt.Errorf("token alg (%v) does not match %s", alg, authPubKey.Alg)
+	}
+	typ, _ := parsedToken.Header["typ"].(string)
+	if alg != authPubKey.Alg {
+		return nil, fmt.Errorf("token typ (%v) does not match JWT", typ)
 	}
 
 	return claims, nil
@@ -55,9 +85,7 @@ func (a *TokenAuth) CheckToken(token string, tokenType string) (map[string]inter
 //								  in the "Authorization" header
 // Web Clients: Access tokens must be provided in the "rokwire-access-token" cookie
 //				and CSRF tokens must be provided in the "CSRF" header
-func (a *TokenAuth) CheckRequestTokens(r *http.Request) (map[string]interface{}, error) {
-	// TODO: refactor to return standardized claims struct
-
+func (a *TokenAuth) CheckRequestTokens(r *http.Request) (*Claims, error) {
 	accessToken, csrfToken, err := GetRequestTokens(r)
 	if err != nil {
 		return nil, fmt.Errorf("error getting request tokens: %v", err)
@@ -66,11 +94,6 @@ func (a *TokenAuth) CheckRequestTokens(r *http.Request) (map[string]interface{},
 	accessClaims, err := a.CheckToken(accessToken, "access")
 	if err != nil {
 		return nil, fmt.Errorf("error validating access token: %v", err)
-	}
-
-	err = ValidateAccessTokenClaims(accessClaims)
-	if err != nil {
-		return nil, fmt.Errorf("error validating access token claims: %v", err)
 	}
 
 	if csrfToken != "" {
@@ -95,74 +118,31 @@ func NewTokenAuth(authService *AuthService) *TokenAuth {
 
 // -------------------------- Helper Functions --------------------------
 
-// ValidateAccessTokenClaims will validate that the access token contains the required claims
-func ValidateAccessTokenClaims(accessClaims jwt.MapClaims) error {
-	// TODO: refactor to return standardized claims struct
-	_, ok := accessClaims["user_id"].(string)
-	if !ok {
-		return fmt.Errorf("error parsing user id from access claims")
-	}
-
-	_, ok = accessClaims["client_id"].(string)
-	if !ok {
-		return fmt.Errorf("error parsing client id from access claims")
-	}
-
-	return nil
-}
-
 // ValidateCsrfTokenClaims will validate that the CSRF token claims appropriately match the access token claims
-func ValidateCsrfTokenClaims(accessClaims jwt.MapClaims, csrfClaims jwt.MapClaims) error {
-	userID, ok := accessClaims["user_id"].(string)
-	if !ok {
-		return fmt.Errorf("error parsing user id from access claims")
+func ValidateCsrfTokenClaims(accessClaims *Claims, csrfClaims *Claims) error {
+	if csrfClaims.Subject != accessClaims.Subject {
+		return fmt.Errorf("csrf sub (%s) does not match access sub (%s)", csrfClaims.Subject, accessClaims.Subject)
 	}
 
-	clientID, ok := accessClaims["client_id"].(string)
-	if !ok {
-		return fmt.Errorf("error parsing client id from access claims")
-	}
-
-	err := ValidateTokenClaim(csrfClaims, "user_id", userID)
-	if err != nil {
-		return err
-	}
-
-	err = ValidateTokenClaim(csrfClaims, "client_id", clientID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// ValidateTokenClaim will validate that the provided token claims contain a claim matching the value provided
-func ValidateTokenClaim(claims jwt.MapClaims, field string, value interface{}) error {
-	claim, ok := claims[field]
-	if !ok {
-		return fmt.Errorf("claim not found: %s", field)
-	}
-
-	if claim != value {
-		return fmt.Errorf("claim %s = %v does not match %v", field, claim, value)
+	if csrfClaims.ClientID != accessClaims.ClientID {
+		return fmt.Errorf("csrf client_id (%s) does not match access client_id (%s)", csrfClaims.ClientID, accessClaims.ClientID)
 	}
 
 	return nil
 }
 
 // ValidatePermissionsClaim will validate that the provided token claims contain one or more of the required permissions
-func ValidatePermissionsClaim(claims jwt.MapClaims, requiredPermissions []string) error {
+func ValidatePermissionsClaim(claims *Claims, requiredPermissions []string) error {
 	if len(requiredPermissions) == 0 {
 		return nil
 	}
 
-	permissionsString, ok := claims["permissions"].(string)
-	if !ok {
-		return errors.New("claims do not contain permissions")
+	if claims.Permissions == "" {
+		return errors.New("permissions claim empty")
 	}
 
 	found := false
-	permissions := strings.Split(permissionsString, ",")
+	permissions := strings.Split(claims.Permissions, ",")
 	for _, v := range requiredPermissions {
 		if containsString(permissions, v) {
 			found = true
@@ -171,7 +151,7 @@ func ValidatePermissionsClaim(claims jwt.MapClaims, requiredPermissions []string
 	}
 
 	if !found {
-		return fmt.Errorf("required permissions not found: required %v, found %s", requiredPermissions, permissionsString)
+		return fmt.Errorf("required permissions not found: required %v, found %s", requiredPermissions, claims.Permissions)
 	}
 
 	return nil
