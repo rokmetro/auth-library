@@ -8,7 +8,7 @@ import (
 // TokenAuth contains configurations and helper functions required to validate tokens
 type SignatureAuth struct {
 	authService AuthService
-	privKey     *rsa.PrivateKey
+	serviceKey  *rsa.PrivateKey
 }
 
 // SignMessage generates and returns a signature for the provided message
