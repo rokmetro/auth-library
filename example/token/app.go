@@ -4,11 +4,12 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/rokmetro/auth-lib/authlib"
+	"github.com/rokmetro/auth-lib/authservice"
+	"github.com/rokmetro/auth-lib/tokenauth"
 )
 
 type WebAdapter struct {
-	tokenAuth *authlib.TokenAuth
+	tokenAuth *tokenauth.TokenAuth
 }
 
 func (we WebAdapter) Start() {
@@ -67,24 +68,25 @@ func (we WebAdapter) tokenAuthWrapFunc(handler http.HandlerFunc, permissions []s
 }
 
 // NewWebAdapter creates new WebAdapter instance
-func NewWebAdapter(tokenAuth *authlib.TokenAuth) WebAdapter {
+func NewWebAdapter(tokenAuth *tokenauth.TokenAuth) WebAdapter {
 	return WebAdapter{tokenAuth: tokenAuth}
 }
 
 func main() {
-	// Define list of services to load public keys for
-	services := []string{"auth"}
-	// Instantiate a remote KeyLoader to load auth public key from auth service
-	serviceLoader := authlib.NewRemoteServiceRegLoader("https://auth.rokmetro.com", services)
+	// Instantiate a remote ServiceRegLoader to load auth service registration record from auth service
+	serviceLoader := authservice.NewRemoteServiceRegLoader("https://auth.rokmetro.com", nil)
 
 	// Instantiate AuthService instance
-	authService, err := authlib.NewAuthService("example", "https://sample.rokmetro.com", serviceLoader)
+	authService, err := authservice.NewAuthService("example", "https://sample.rokmetro.com", serviceLoader)
 	if err != nil {
 		log.Fatalf("Error initializing auth service: %v", err)
 	}
 
 	// Instantiate TokenAuth instance to perform token validation
-	tokenAuth := authlib.NewTokenAuth(true, authService)
+	tokenAuth, err := tokenauth.NewTokenAuth(true, authService)
+	if err != nil {
+		log.Fatalf("Error intitializing token auth: %v", err)
+	}
 
 	// Instantiate and start a new WebAdapter
 	adapter := NewWebAdapter(tokenAuth)

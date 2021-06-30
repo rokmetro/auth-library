@@ -1,4 +1,4 @@
-package authlib
+package authutils
 
 import (
 	"crypto/sha256"
@@ -8,8 +8,8 @@ import (
 	"fmt"
 )
 
-// containsString returns true if the provided value is in the provided slice
-func containsString(slice []string, val string) bool {
+// ContainsString returns true if the provided value is in the provided slice
+func ContainsString(slice []string, val string) bool {
 	for _, v := range slice {
 		if val == v {
 			return true
@@ -18,17 +18,18 @@ func containsString(slice []string, val string) bool {
 	return false
 }
 
-// removeString removes the provided value from the provided slice
+// RemoveString removes the provided value from the provided slice
 // 	Returns modified slice. If val is not found returns unmodified slice
-func removeString(slice []string, val string) []string {
+func RemoveString(slice []string, val string) ([]string, bool) {
 	for i, other := range slice {
 		if other == val {
-			return append(slice[:i], slice[i+1:]...)
+			return append(slice[:i], slice[i+1:]...), true
 		}
 	}
-	return slice
+	return slice, false
 }
 
+// GetKeyFingerprint returns the fingerprint for a given PEM encoded key
 func GetKeyFingerprint(keyPem string) (string, error) {
 	key, rest := pem.Decode([]byte(keyPem))
 	if len(rest) != 0 || key == nil || len(key.Bytes) == 0 {
@@ -43,6 +44,7 @@ func GetKeyFingerprint(keyPem string) (string, error) {
 	return base64.StdEncoding.EncodeToString(hash), nil
 }
 
+// HashSha256 returns the SHA256 hash of the input
 func HashSha256(data []byte) ([]byte, error) {
 	if data == nil {
 		return nil, fmt.Errorf("cannot hash nil data")

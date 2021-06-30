@@ -1,4 +1,4 @@
-package authlib
+package authservice
 
 import (
 	"crypto/rsa"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/rokmetro/auth-lib/authutils"
 	"golang.org/x/sync/syncmap"
 	"gopkg.in/go-playground/validator.v9"
 )
@@ -45,7 +46,7 @@ func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 	now := time.Now()
 	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.refreshCacheFreq) {
 		a.servicesLock.RUnlock()
-		loadServicesError = a.loadServices()
+		loadServicesError = a.LoadServices()
 		a.servicesLock.RLock()
 	}
 
@@ -65,6 +66,45 @@ func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 	}
 
 	return &service, loadServicesError
+}
+
+// LoadServices loads the subscribed service registration records and caches them
+// 	This function will be called periodically after refreshCacheFreq, but can be called directly to force a cache refresh
+func (a *AuthService) LoadServices() error {
+	services, loadServicesError := a.serviceLoader.LoadServices()
+	if services != nil {
+		a.setServices(services)
+	}
+	return loadServicesError
+}
+
+// SubscribeService subscribes to the provided services
+//	If reload is true and ont of the services is not already subscribed, the service registrations will be reloaded immediately
+func (a *AuthService) SubscribeServices(serviceIDs []string, reload bool) error {
+	newSub := false
+
+	for _, serviceID := range serviceIDs {
+		subscribed := a.serviceLoader.SubscribeService(serviceID)
+		if subscribed {
+			newSub = true
+		}
+	}
+
+	if reload && newSub {
+		err := a.LoadServices()
+		if err != nil {
+			return fmt.Errorf("error loading service registrations: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// UnsubscribeService unsubscribes from the provided service
+func (a *AuthService) UnsubscribeServices(serviceIDs []string) {
+	for _, serviceID := range serviceIDs {
+		a.serviceLoader.UnsubscribeService(serviceID)
+	}
 }
 
 // SetCacheRefreshFreq sets the frequency at which cached key information is refreshed in minutes
@@ -129,21 +169,13 @@ func (a *AuthService) setServices(services []ServiceReg) {
 	a.servicesLock.Unlock()
 }
 
-func (a *AuthService) loadServices() error {
-	services, loadServicesError := a.serviceLoader.LoadServices()
-	if services != nil {
-		a.setServices(services)
-	}
-	return loadServicesError
-}
-
 // NewAuthService creates and configures a new AuthService instance
 func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceRegLoader) (*AuthService, error) {
 	// Subscribe to the implementing service to validate registration
 	serviceLoader.SubscribeService(serviceID)
 
 	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, refreshCacheFreq: 720}
-	err := auth.loadServices()
+	err := auth.LoadServices()
 	if err != nil {
 		return nil, fmt.Errorf("error loading services: %v", err)
 	}
@@ -156,7 +188,7 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	return auth, nil
 }
 
-// -------------------- KeyLoader --------------------
+// -------------------- ServiceRegLoader --------------------
 
 // ServiceRegLoader declares an interface to load the service registrations for specified services
 type ServiceRegLoader interface {
@@ -165,9 +197,11 @@ type ServiceRegLoader interface {
 	//GetSubscribedServices returns the list of currently subscribed services
 	GetSubscribedServices() []string
 	// SubscribeService subscribes the loader to the given service
-	SubscribeService(serviceID string)
+	// 	Returns true if the specified service was added or false if it was already found
+	SubscribeService(serviceID string) bool
 	// UnsubscribeService unsubscribes the loader from the given service
-	UnsubscribeService(serviceID string)
+	// 	Returns true if the specified service was removed or false if it was not found
+	UnsubscribeService(serviceID string) bool
 }
 
 //RemoteServiceRegLoaderImpl provides a ServiceRegLoader implemntation for a remote auth service
@@ -178,6 +212,10 @@ type RemoteServiceRegLoaderImpl struct {
 
 // LoadServices implements ServiceRegLoader interface
 func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
+	if len(r.GetSubscribedServices()) == 0 {
+		return nil, nil
+	}
+
 	url := fmt.Sprintf("%s/services", r.authHost)
 
 	client := &http.Client{}
@@ -192,7 +230,6 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 	q.Add("ids", servicesQuery)
 	req.URL.RawQuery = q.Encode()
 
-	// req.Header.Set("ROKWIRE-API-KEY", apiKey)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error requesting services: %v", err)
@@ -247,6 +284,8 @@ func NewRemoteServiceRegLoader(authHost string, subscribedServices []string) *Re
 
 // ServiceRegSubscriptions defined a struct to hold service registration subscriptions
 // 	This struct implements the subcription part of the ServiceRegLoader interface
+//	If you subscribe to the reserved "all" service ID, all registered services
+//	will be loaded
 type ServiceRegSubscriptions struct {
 	subscribedServices []string // Service registrations to load
 	servicesLock       *sync.RWMutex
@@ -261,19 +300,29 @@ func (r *ServiceRegSubscriptions) GetSubscribedServices() []string {
 }
 
 // SubscribeService adds the given service ID to the list of subscribed services if not already present
-func (r *ServiceRegSubscriptions) SubscribeService(serviceID string) {
+// 	Returns true if the specified service was added or false if it was already found
+func (r *ServiceRegSubscriptions) SubscribeService(serviceID string) bool {
 	r.servicesLock.Lock()
-	if !containsString(r.subscribedServices, serviceID) {
+	defer r.servicesLock.Unlock()
+
+	if !authutils.ContainsString(r.subscribedServices, serviceID) {
 		r.subscribedServices = append(r.subscribedServices, serviceID)
+		return true
 	}
-	r.servicesLock.Unlock()
+
+	return false
 }
 
 // UnsubscribeService removed the given service ID from the list of subscribed services if presents
-func (r *ServiceRegSubscriptions) UnsubscribeService(serviceID string) {
+// 	Returns true if the specified service was removed or false if it was not found
+func (r *ServiceRegSubscriptions) UnsubscribeService(serviceID string) bool {
 	r.servicesLock.Lock()
-	r.subscribedServices = removeString(r.subscribedServices, serviceID)
-	r.servicesLock.Unlock()
+	defer r.servicesLock.Unlock()
+
+	services, removed := authutils.RemoveString(r.subscribedServices, serviceID)
+	r.subscribedServices = services
+
+	return removed
 }
 
 // NewServiceRegSubscriptions creates and configures a new ServiceRegSubscriptions instance
@@ -314,5 +363,5 @@ func (p *PubKey) LoadKeyFromPem() error {
 
 // GetFingerprint returns a fingerprint for the key
 func (p *PubKey) GetFingerprint() (string, error) {
-	return GetKeyFingerprint(p.KeyPem)
+	return authutils.GetKeyFingerprint(p.KeyPem)
 }

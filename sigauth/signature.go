@@ -1,4 +1,4 @@
-package authlib
+package sigauth
 
 import (
 	"crypto"
@@ -11,19 +11,21 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/rokmetro/auth-lib/authservice"
+	"github.com/rokmetro/auth-lib/authutils"
 	"gopkg.in/go-playground/validator.v9"
 )
 
 // SignatureAuth contains configurations and helper functions required to validate signatures
 type SignatureAuth struct {
-	authService *AuthService
+	authService *authservice.AuthService
 
 	serviceKey *rsa.PrivateKey
 }
 
 // Sign generates and returns a signature for the provided message
 func (s *SignatureAuth) Sign(message []byte) (string, error) {
-	hash, err := HashSha256(message)
+	hash, err := authutils.HashSha256(message)
 	if err != nil {
 		return "", fmt.Errorf("error hashing message: %v", err)
 	}
@@ -50,7 +52,7 @@ func (s *SignatureAuth) CheckSignature(serviceID string, message []byte, signatu
 		return fmt.Errorf("error decoding signature: %v", err)
 	}
 
-	hash, err := HashSha256(message)
+	hash, err := authutils.HashSha256(message)
 	if err != nil {
 		return fmt.Errorf("error hashing message: %v", err)
 	}
@@ -98,47 +100,54 @@ func (s *SignatureAuth) SignRequest(r *http.Request) error {
 }
 
 // CheckRequestSignature validates the signature on the provided request
-func (s *SignatureAuth) CheckRequestSignature(r *http.Request) error {
+// 	The request must be signed by one of the services in requiredServiceIDs. If nil, any valid signature
+//	from a subscribed service will be accepted
+// 	Returns the service ID of the signing service
+func (s *SignatureAuth) CheckRequestSignature(r *http.Request, requiredServiceIDs []string) (string, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return errors.New("request missing authorization header")
+		return "", errors.New("request missing authorization header")
 	}
 
 	digestHeader := r.Header.Get("Digest")
 
 	digest, err := GetRequestDigest(r)
 	if err != nil {
-		return fmt.Errorf("unable to build request digest: %v", err)
+		return "", fmt.Errorf("unable to build request digest: %v", err)
 	}
 
 	if digest != digestHeader {
-		return errors.New("message digest does not match digest header")
+		return "", errors.New("message digest does not match digest header")
 	}
 
 	sigAuthHeader, err := ParseSignatureAuthHeader(authHeader)
 	if err != nil {
-		return fmt.Errorf("error parsing signature authorization header: %v", err)
+		return "", fmt.Errorf("error parsing signature authorization header: %v", err)
 	}
 
 	if sigAuthHeader.Algorithm != "rsa-sha256" {
-		return fmt.Errorf("signing algorithm (%s) does not match rsa-sha256", sigAuthHeader.Algorithm)
+		return "", fmt.Errorf("signing algorithm (%s) does not match rsa-sha256", sigAuthHeader.Algorithm)
+	}
+
+	if requiredServiceIDs != nil && !authutils.ContainsString(requiredServiceIDs, sigAuthHeader.KeyId) {
+		return "", fmt.Errorf("request signer (%s) is not one of the required services %v", sigAuthHeader.KeyId, requiredServiceIDs)
 	}
 
 	sigString, err := BuildSignatureString(r, sigAuthHeader.Headers)
 	if err != nil {
-		return fmt.Errorf("error building signature string: %v", err)
+		return "", fmt.Errorf("error building signature string: %v", err)
 	}
 
 	err = s.CheckSignature(sigAuthHeader.KeyId, []byte(sigString), sigAuthHeader.Signature)
 	if err != nil {
-		return fmt.Errorf("error validating signature: %v", err)
+		return "", fmt.Errorf("error validating signature: %v", err)
 	}
 
-	return nil
+	return sigAuthHeader.KeyId, nil
 }
 
 // NewSignatureAuth creates and configures a new SignatureAuth instance
-func NewSignatureAuth(serviceID string, serviceKey *rsa.PrivateKey, authService *AuthService) (*SignatureAuth, error) {
+func NewSignatureAuth(serviceKey *rsa.PrivateKey, authService *authservice.AuthService) (*SignatureAuth, error) {
 	err := authService.ValidateServiceRegistrationKey(serviceKey)
 	if err != nil {
 		return nil, fmt.Errorf("unable to validate service key registration: please contact the auth service system admin to register a public key for your service - %v", err)
@@ -186,7 +195,7 @@ func GetRequestDigest(r *http.Request) (string, error) {
 	}
 	r.Body.Close()
 
-	hash, err := HashSha256(body)
+	hash, err := authutils.HashSha256(body)
 	if err != nil {
 		return "", fmt.Errorf("error hashing request body: %v", err)
 	}

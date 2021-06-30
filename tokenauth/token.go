@@ -1,4 +1,4 @@
-package authlib
+package tokenauth
 
 import (
 	"errors"
@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/rokmetro/auth-lib/authservice"
+	"github.com/rokmetro/auth-lib/authutils"
 )
 
 // Claims represents the standard claims included in access tokens
@@ -22,7 +24,7 @@ type Claims struct {
 
 // TokenAuth contains configurations and helper functions required to validate tokens
 type TokenAuth struct {
-	authService         *AuthService
+	authService         *authservice.AuthService
 	acceptRokwireTokens bool
 }
 
@@ -70,7 +72,7 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	}
 
 	aud := strings.Split(claims.Audience, ",")
-	if !(containsString(aud, t.authService.GetServiceID()) || (t.acceptRokwireTokens && containsString(aud, "rokwire"))) {
+	if !(authutils.ContainsString(aud, t.authService.GetServiceID()) || (t.acceptRokwireTokens && authutils.ContainsString(aud, "rokwire"))) {
 		acceptAuds := t.authService.GetServiceID()
 		if t.acceptRokwireTokens {
 			acceptAuds += " or rokwire"
@@ -152,7 +154,7 @@ func (t *TokenAuth) ValidatePermissionsClaim(claims *Claims, requiredPermissions
 	// Grant access if claims contain any of the required permissions
 	permissions := strings.Split(claims.Permissions, ",")
 	for _, v := range requiredPermissions {
-		if containsString(permissions, v) {
+		if authutils.ContainsString(permissions, v) {
 			return nil
 		}
 	}
@@ -177,7 +179,7 @@ func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) err
 
 	// Grant access if claims contain service-level global scope
 	serviceAll := t.authService.GetServiceID() + ":all"
-	if containsString(scopes, serviceAll) {
+	if authutils.ContainsString(scopes, serviceAll) {
 		return nil
 	}
 
@@ -187,7 +189,7 @@ func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) err
 	}
 
 	// Grant access if claims contain required scope
-	if containsString(scopes, requiredScope) {
+	if authutils.ContainsString(scopes, requiredScope) {
 		return nil
 	}
 
@@ -195,8 +197,9 @@ func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) err
 }
 
 // NewTokenAuth creates and configures a new TokenAuth instance
-func NewTokenAuth(acceptRokwireTokens bool, authService *AuthService) *TokenAuth {
-	return &TokenAuth{acceptRokwireTokens: acceptRokwireTokens, authService: authService}
+func NewTokenAuth(acceptRokwireTokens bool, authService *authservice.AuthService) (*TokenAuth, error) {
+	authService.SubscribeServices([]string{"auth"}, true)
+	return &TokenAuth{acceptRokwireTokens: acceptRokwireTokens, authService: authService}, nil
 }
 
 // -------------------------- Helper Functions --------------------------
