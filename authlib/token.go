@@ -9,6 +9,7 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
+// Claims represents the standard claims included in access tokens
 type Claims struct {
 	// Required Standard Claims: sub, exp, iat
 	jwt.StandardClaims
@@ -28,7 +29,7 @@ type TokenAuth struct {
 // CheckToken validates the provided token and returns the token claims
 func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	authServiceReg, err := t.authService.GetServiceReg("auth")
-	if authServiceReg == nil || authServiceReg.PubKey.Key == nil {
+	if err != nil || authServiceReg == nil || authServiceReg.PubKey == nil || authServiceReg.PubKey.Key == nil {
 		return nil, fmt.Errorf("failed to retrieve auth service pub key: %v", err)
 	}
 
