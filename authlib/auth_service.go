@@ -3,6 +3,7 @@ package authlib
 import (
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -15,67 +16,75 @@ import (
 	"gopkg.in/go-playground/validator.v9"
 )
 
-// -------------------- Auth Service --------------------
+// -------------------- AuthService --------------------
 
 // AuthService contains the configurations to interface with the auth service
 type AuthService struct {
-	keyLoader KeyLoader
+	serviceLoader ServiceRegLoader
 
-	pubKeys          *syncmap.Map
-	pubKeyUpdated    *time.Time
-	pubKeyLock       *sync.RWMutex
+	// ID of implementing service
+	serviceID string
+
+	services         *syncmap.Map
+	servicesUpdated  *time.Time
+	servicesLock     *sync.RWMutex
 	refreshCacheFreq int
 }
 
-func (a *AuthService) GetPubKey(service string) (*PubKey, error) {
-	a.pubKeyLock.RLock()
-	defer a.pubKeyLock.RUnlock()
-
-	var loadKeysError error
-	now := time.Now()
-	if a.pubKeyUpdated == nil || now.Sub(*a.pubKeyUpdated).Minutes() > float64(a.refreshCacheFreq) {
-		a.pubKeyLock.RUnlock()
-		loadKeysError = a.loadPubKeys()
-		a.pubKeyLock.RLock()
-	}
-
-	var key PubKey //to return
-
-	if a.pubKeys == nil {
-		return nil, fmt.Errorf("pub keys could not be found - %v", loadKeysError)
-	}
-	itemValue, ok := a.pubKeys.Load(service)
-	if !ok {
-		return nil, fmt.Errorf("pub key could not be found for service: %s - %v", service, loadKeysError)
-	}
-
-	key, ok = itemValue.(PubKey)
-	if !ok {
-		return nil, fmt.Errorf("pub key could not be parsed for service: %s - %v", service, loadKeysError)
-	}
-
-	return &key, loadKeysError
+// GetServiceID returns the ID of the implementing service
+func (a *AuthService) GetServiceID() string {
+	return a.serviceID
 }
 
-func (a *AuthService) setPubKeys(pubKeys []PubKey) {
-	a.pubKeyLock.Lock()
+func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
+	a.servicesLock.RLock()
+	defer a.servicesLock.RUnlock()
 
-	a.pubKeys = &syncmap.Map{}
-	if len(pubKeys) > 0 {
-		for _, key := range pubKeys {
-			a.pubKeys.Store(key.Service, key)
+	var loadServicesError error
+	now := time.Now()
+	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.refreshCacheFreq) {
+		a.servicesLock.RUnlock()
+		loadServicesError = a.loadServices()
+		a.servicesLock.RLock()
+	}
+
+	var service ServiceReg
+
+	if a.services == nil {
+		return nil, fmt.Errorf("services could not be loaded: %v", loadServicesError)
+	}
+	itemValue, ok := a.services.Load(serviceID)
+	if !ok {
+		return nil, fmt.Errorf("service could not be found for id: %s - %v", serviceID, loadServicesError)
+	}
+
+	service, ok = itemValue.(ServiceReg)
+	if !ok {
+		return nil, fmt.Errorf("service could not be parsed for id: %s - %v", serviceID, loadServicesError)
+	}
+
+	return &service, loadServicesError
+}
+
+func (a *AuthService) setServices(services []ServiceReg) {
+	a.servicesLock.Lock()
+
+	a.services = &syncmap.Map{}
+	if len(services) > 0 {
+		for _, service := range services {
+			a.services.Store(service.ServiceID, service)
 		}
 	}
 
-	a.pubKeyLock.Unlock()
+	a.servicesLock.Unlock()
 }
 
-func (a *AuthService) loadPubKeys() error {
-	pubKeys, loadKeysError := a.keyLoader.LoadPubKeys()
-	if pubKeys != nil {
-		a.setPubKeys(pubKeys)
+func (a *AuthService) loadServices() error {
+	services, loadServicesError := a.serviceLoader.LoadServices()
+	if services != nil {
+		a.setServices(services)
 	}
-	return loadKeysError
+	return loadServicesError
 }
 
 // SetCacheRefreshFreq sets the frequency at which cached key information is refreshed in minutes
@@ -84,108 +93,188 @@ func (a *AuthService) SetCacheRefreshFreq(freq int) {
 	a.refreshCacheFreq = freq
 }
 
+func (a *AuthService) ValidateServiceRegistration(serviceHost string) error {
+	service, err := a.GetServiceReg(a.serviceID)
+	if err != nil || service == nil {
+		return fmt.Errorf("no service registration found with id %s: %v", a.serviceID, err)
+	}
+
+	if serviceHost != service.Host {
+		return fmt.Errorf("service host (%s) does not match expected value (%s) for id %s", service.Host, serviceHost, a.serviceID)
+	}
+
+	return nil
+}
+
+func (a *AuthService) ValidateServiceRegistrationKey(privKey *rsa.PrivateKey) error {
+	if privKey == nil {
+		return errors.New("provided priv key is nil")
+	}
+
+	service, err := a.GetServiceReg(a.serviceID)
+	if err != nil || service == nil {
+		return fmt.Errorf("no service registration found with id %s: %v", a.serviceID, err)
+	}
+
+	if service.PubKey == nil {
+		return fmt.Errorf("no service pub key registered for id %s", a.serviceID)
+	}
+
+	if service.PubKey.Key == nil {
+		err = service.PubKey.LoadKeyFromPem()
+		if err != nil || service.PubKey.Key == nil {
+			return fmt.Errorf("service pub key is invalid for id %s: %v", a.serviceID, err)
+		}
+	}
+
+	if *service.PubKey.Key != privKey.PublicKey {
+		return fmt.Errorf("service pub key does not match for id %s", a.serviceID)
+	}
+
+	return nil
+}
+
 // NewAuthService creates and configures a new AuthService instance
-func NewAuthService(keyLoader KeyLoader) *AuthService {
-	auth := &AuthService{keyLoader: keyLoader, refreshCacheFreq: 720}
-	auth.loadPubKeys()
-	return auth
+func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceRegLoader) (*AuthService, error) {
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, refreshCacheFreq: 720}
+	err := auth.loadServices()
+	if err != nil {
+		return nil, fmt.Errorf("error loading services: %v", err)
+	}
+
+	err = auth.ValidateServiceRegistration(serviceHost)
+	if err != nil {
+		return nil, fmt.Errorf("unable to validate service registration: please contact the auth service system admin to register your service - %v", err)
+	}
+
+	return auth, nil
 }
 
-// -------------------- Key Loader --------------------
+// -------------------- KeyLoader --------------------
 
-// KeyLoader provides an interface to load the public keys for specified services
-type KeyLoader interface {
-	LoadPubKeys() ([]PubKey, error)
+// ServiceRegLoader provides an interface to load the service registrations for specified services
+type ServiceRegLoader interface {
+	LoadServices() ([]ServiceReg, error)
+	SubscribeService(serviceID string)
+	UnsubscribeService(serviceID string)
 }
 
-type RemoteKeyLoaderImpl struct {
-	host               string   // Remote host of the auth service
-	subscribedServices []string // Service public keys to load
+type RemoteServiceRegLoaderImpl struct {
+	authHost           string   // Remote host of the auth service
+	subscribedServices []string // Service registrations to load
+	servicesLock       *sync.RWMutex
 }
 
-func (k *RemoteKeyLoaderImpl) LoadPubKeys() ([]PubKey, error) {
-	url := fmt.Sprintf("%s/pubkeys", k.host)
+func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
+	url := fmt.Sprintf("%s/services", r.authHost)
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error formatting request to load pub keys: %v", err)
+		return nil, fmt.Errorf("error formatting request to load services: %v", err)
 	}
 
-	servicesQuery := strings.Join(k.subscribedServices, ",")
+	r.servicesLock.RLock()
+	servicesQuery := strings.Join(r.subscribedServices, ",")
+	r.servicesLock.RUnlock()
 
 	q := req.URL.Query()
-	q.Add("services", servicesQuery)
+	q.Add("ids", servicesQuery)
 	req.URL.RawQuery = q.Encode()
 
 	// req.Header.Set("ROKWIRE-API-KEY", apiKey)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error requesting pub keys: %v", err)
+		return nil, fmt.Errorf("error requesting services: %v", err)
 	}
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("error loading pub keys: %d - %s", resp.StatusCode, resp.Body)
+		return nil, fmt.Errorf("error loading services: %d - %s", resp.StatusCode, resp.Body)
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading body of pub keys response: %v", err)
+		return nil, fmt.Errorf("error reading body of service response: %v", err)
 	}
 
-	var pubKeys []PubKey
-	err = json.Unmarshal(body, &pubKeys)
+	var services []ServiceReg
+	err = json.Unmarshal(body, &services)
 	if err != nil {
-		return nil, fmt.Errorf("error on unmarshal pub keys response: %v", err)
+		return nil, fmt.Errorf("error on unmarshal service response: %v", err)
 	}
 
 	validate := validator.New()
-	err = validate.Struct(pubKeys)
+	err = validate.Struct(services)
 	if err != nil {
-		return nil, fmt.Errorf("error validating pub keys data: %v", err)
+		return nil, fmt.Errorf("error validating service data: %v", err)
 	}
 
 	serviceErrors := map[string]error{}
-	for _, key := range pubKeys {
-		err = key.LoadKeyFromString()
+	for _, service := range services {
+		err = service.PubKey.LoadKeyFromPem()
 		if err != nil {
-			serviceErrors[key.Service] = err
+			serviceErrors[service.ServiceID] = err
 		}
 	}
 
 	err = nil
 	if len(serviceErrors) > 0 {
-		err = fmt.Errorf("error loading pub keys: %v", serviceErrors)
+		err = fmt.Errorf("error loading services: %v", serviceErrors)
 	}
 
-	return pubKeys, err
+	return services, err
 }
 
-// NewRemoteKeyLoader creates and configures a new remoteKeyLoader instance
-func NewRemoteKeyLoader(host string, subscribedServices []string) *RemoteKeyLoaderImpl {
-	return &RemoteKeyLoaderImpl{host: host, subscribedServices: subscribedServices}
+func (r *RemoteServiceRegLoaderImpl) SubscribeService(serviceID string) {
+	r.servicesLock.Lock()
+	if !containsString(r.subscribedServices, serviceID) {
+		r.subscribedServices = append(r.subscribedServices, serviceID)
+	}
+	r.servicesLock.Unlock()
 }
 
-// -------------------- Pub Key --------------------
+func (r *RemoteServiceRegLoaderImpl) UnsubscribeService(serviceID string) {
+	r.servicesLock.Lock()
+	r.subscribedServices = removeString(r.subscribedServices, serviceID)
+	r.servicesLock.Unlock()
+}
+
+// NewRemoteServiceRegLoader creates and configures a new RemoteServiceRegLoaderImpl instance for the provided auth service host
+func NewRemoteServiceRegLoader(authHost string, subscribedServices []string) *RemoteServiceRegLoaderImpl {
+	return &RemoteServiceRegLoaderImpl{authHost: authHost, subscribedServices: subscribedServices}
+}
+
+// -------------------- ServiceReg --------------------
+
+// ServiceReg represents a service registration record
+type ServiceReg struct {
+	ServiceID string  `json:"service" validate:"required"`
+	Host      string  `json:"host" validate:"required"`
+	PubKey    *PubKey `json:"pub_key"`
+}
+
+// -------------------- PubKey --------------------
 
 // PubKey represents a public key object including the key and related metadata
 type PubKey struct {
-	Key     *rsa.PublicKey
-	KeyPem  string `json:"key_pem" validate:"required"`
-	Service string `json:"service" validate:"required"`
-	Kid     string `json:"kid" validate:"required"`
-	Issuer  string `json:"iss" validate:"required"`
-	Alg     string `json:"alg" validate:"required"`
+	Key    *rsa.PublicKey
+	KeyPem string `json:"key_pem" validate:"required"`
+	Alg    string `json:"alg" validate:"required"`
 }
 
-func (k *PubKey) LoadKeyFromString() error {
-	key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(k.KeyPem))
+func (p *PubKey) LoadKeyFromPem() error {
+	key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(p.KeyPem))
 	if err != nil {
 		return fmt.Errorf("error parsing key string: %v", err)
 	}
 
-	k.Key = key
+	p.Key = key
+
 	return nil
+}
+
+func (p *PubKey) GetFingerprint() (string, error) {
+	return GetKeyFingerprint(p.KeyPem)
 }
