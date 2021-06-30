@@ -36,6 +36,7 @@ func (a *AuthService) GetServiceID() string {
 	return a.serviceID
 }
 
+// GetServiceReg returns the service registration record for the given ID if found
 func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 	a.servicesLock.RLock()
 	defer a.servicesLock.RUnlock()
@@ -66,33 +67,13 @@ func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 	return &service, loadServicesError
 }
 
-func (a *AuthService) setServices(services []ServiceReg) {
-	a.servicesLock.Lock()
-
-	a.services = &syncmap.Map{}
-	if len(services) > 0 {
-		for _, service := range services {
-			a.services.Store(service.ServiceID, service)
-		}
-	}
-
-	a.servicesLock.Unlock()
-}
-
-func (a *AuthService) loadServices() error {
-	services, loadServicesError := a.serviceLoader.LoadServices()
-	if services != nil {
-		a.setServices(services)
-	}
-	return loadServicesError
-}
-
 // SetCacheRefreshFreq sets the frequency at which cached key information is refreshed in minutes
-// The default value is 720 (12 hours)
+// 	The default value is 720 (12 hours)
 func (a *AuthService) SetCacheRefreshFreq(freq int) {
 	a.refreshCacheFreq = freq
 }
 
+// ValidateServiceRegistration validates that the implementing service has a valid registration for the provided service ID and hostname
 func (a *AuthService) ValidateServiceRegistration(serviceHost string) error {
 	service, err := a.GetServiceReg(a.serviceID)
 	if err != nil || service == nil {
@@ -106,6 +87,7 @@ func (a *AuthService) ValidateServiceRegistration(serviceHost string) error {
 	return nil
 }
 
+// ValidateServiceRegistrationKey validates that the implementing service has a valid registration for the provided keypair
 func (a *AuthService) ValidateServiceRegistrationKey(privKey *rsa.PrivateKey) error {
 	if privKey == nil {
 		return errors.New("provided priv key is nil")
@@ -134,8 +116,32 @@ func (a *AuthService) ValidateServiceRegistrationKey(privKey *rsa.PrivateKey) er
 	return nil
 }
 
+func (a *AuthService) setServices(services []ServiceReg) {
+	a.servicesLock.Lock()
+
+	a.services = &syncmap.Map{}
+	if len(services) > 0 {
+		for _, service := range services {
+			a.services.Store(service.ServiceID, service)
+		}
+	}
+
+	a.servicesLock.Unlock()
+}
+
+func (a *AuthService) loadServices() error {
+	services, loadServicesError := a.serviceLoader.LoadServices()
+	if services != nil {
+		a.setServices(services)
+	}
+	return loadServicesError
+}
+
 // NewAuthService creates and configures a new AuthService instance
 func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceRegLoader) (*AuthService, error) {
+	// Subscribe to the implementing service to validate registration
+	serviceLoader.SubscribeService(serviceID)
+
 	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, refreshCacheFreq: 720}
 	err := auth.loadServices()
 	if err != nil {
@@ -152,19 +158,25 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 
 // -------------------- KeyLoader --------------------
 
-// ServiceRegLoader provides an interface to load the service registrations for specified services
+// ServiceRegLoader declares an interface to load the service registrations for specified services
 type ServiceRegLoader interface {
+	// LoadServices loads the service registration records for all subscribed services
 	LoadServices() ([]ServiceReg, error)
+	//GetSubscribedServices returns the list of currently subscribed services
+	GetSubscribedServices() []string
+	// SubscribeService subscribes the loader to the given service
 	SubscribeService(serviceID string)
+	// UnsubscribeService unsubscribes the loader from the given service
 	UnsubscribeService(serviceID string)
 }
 
+//RemoteServiceRegLoaderImpl provides a ServiceRegLoader implemntation for a remote auth service
 type RemoteServiceRegLoaderImpl struct {
-	authHost           string   // Remote host of the auth service
-	subscribedServices []string // Service registrations to load
-	servicesLock       *sync.RWMutex
+	authHost string // Remote host of the auth service
+	*ServiceRegSubscriptions
 }
 
+// LoadServices implements ServiceRegLoader interface
 func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 	url := fmt.Sprintf("%s/services", r.authHost)
 
@@ -174,9 +186,7 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 		return nil, fmt.Errorf("error formatting request to load services: %v", err)
 	}
 
-	r.servicesLock.RLock()
-	servicesQuery := strings.Join(r.subscribedServices, ",")
-	r.servicesLock.RUnlock()
+	servicesQuery := strings.Join(r.GetSubscribedServices(), ",")
 
 	q := req.URL.Query()
 	q.Add("ids", servicesQuery)
@@ -227,7 +237,31 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 	return services, err
 }
 
-func (r *RemoteServiceRegLoaderImpl) SubscribeService(serviceID string) {
+// NewRemoteServiceRegLoader creates and configures a new RemoteServiceRegLoaderImpl instance for the provided auth service host
+func NewRemoteServiceRegLoader(authHost string, subscribedServices []string) *RemoteServiceRegLoaderImpl {
+	subscriptions := NewServiceRegSubscriptions(subscribedServices)
+	return &RemoteServiceRegLoaderImpl{authHost: authHost, ServiceRegSubscriptions: subscriptions}
+}
+
+// -------------------- ServiceRegSubscriptions --------------------
+
+// ServiceRegSubscriptions defined a struct to hold service registration subscriptions
+// 	This struct implements the subcription part of the ServiceRegLoader interface
+type ServiceRegSubscriptions struct {
+	subscribedServices []string // Service registrations to load
+	servicesLock       *sync.RWMutex
+}
+
+// GetSubscribedServices returns the list of subscribed services
+func (r *ServiceRegSubscriptions) GetSubscribedServices() []string {
+	r.servicesLock.RLock()
+	defer r.servicesLock.RUnlock()
+
+	return r.subscribedServices
+}
+
+// SubscribeService adds the given service ID to the list of subscribed services if not already present
+func (r *ServiceRegSubscriptions) SubscribeService(serviceID string) {
 	r.servicesLock.Lock()
 	if !containsString(r.subscribedServices, serviceID) {
 		r.subscribedServices = append(r.subscribedServices, serviceID)
@@ -235,15 +269,17 @@ func (r *RemoteServiceRegLoaderImpl) SubscribeService(serviceID string) {
 	r.servicesLock.Unlock()
 }
 
-func (r *RemoteServiceRegLoaderImpl) UnsubscribeService(serviceID string) {
+// UnsubscribeService removed the given service ID from the list of subscribed services if presents
+func (r *ServiceRegSubscriptions) UnsubscribeService(serviceID string) {
 	r.servicesLock.Lock()
 	r.subscribedServices = removeString(r.subscribedServices, serviceID)
 	r.servicesLock.Unlock()
 }
 
-// NewRemoteServiceRegLoader creates and configures a new RemoteServiceRegLoaderImpl instance for the provided auth service host
-func NewRemoteServiceRegLoader(authHost string, subscribedServices []string) *RemoteServiceRegLoaderImpl {
-	return &RemoteServiceRegLoaderImpl{authHost: authHost, subscribedServices: subscribedServices}
+// NewServiceRegSubscriptions creates and configures a new ServiceRegSubscriptions instance
+func NewServiceRegSubscriptions(subscribedServices []string) *ServiceRegSubscriptions {
+	lock := &sync.RWMutex{}
+	return &ServiceRegSubscriptions{subscribedServices: subscribedServices, servicesLock: lock}
 }
 
 // -------------------- ServiceReg --------------------
@@ -264,6 +300,7 @@ type PubKey struct {
 	Alg    string `json:"alg" validate:"required"`
 }
 
+// LoadKeyFromPem parses "KeyPem" and sets the result to "Key"
 func (p *PubKey) LoadKeyFromPem() error {
 	key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(p.KeyPem))
 	if err != nil {
@@ -275,6 +312,7 @@ func (p *PubKey) LoadKeyFromPem() error {
 	return nil
 }
 
+// GetFingerprint returns a fingerprint for the key
 func (p *PubKey) GetFingerprint() (string, error) {
 	return GetKeyFingerprint(p.KeyPem)
 }
