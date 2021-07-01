@@ -87,7 +87,7 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 		return nil, fmt.Errorf("token alg (%v) does not match %s", alg, authServiceReg.PubKey.Alg)
 	}
 	typ, _ := parsedToken.Header["typ"].(string)
-	if alg != authServiceReg.PubKey.Alg {
+	if typ != "JWT" {
 		return nil, fmt.Errorf("token typ (%v) does not match JWT", typ)
 	}
 
