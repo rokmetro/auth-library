@@ -18,7 +18,7 @@ import (
 
 // SignatureAuth contains configurations and helper functions required to validate signatures
 type SignatureAuth struct {
-	authService *authservice.AuthService
+	AuthService *authservice.AuthService
 
 	serviceKey *rsa.PrivateKey
 }
@@ -42,7 +42,7 @@ func (s *SignatureAuth) Sign(message []byte) (string, error) {
 
 // CheckSignature validates the provided message signature from the given service
 func (s *SignatureAuth) CheckSignature(serviceID string, message []byte, signature string) error {
-	serviceReg, err := s.authService.GetServiceReg(serviceID)
+	serviceReg, err := s.AuthService.GetServiceReg(serviceID)
 	if err != nil || serviceReg == nil || serviceReg.PubKey == nil || serviceReg.PubKey.Key == nil {
 		return fmt.Errorf("failed to retrieve service pub key: %v", err)
 	}
@@ -75,7 +75,7 @@ func (s *SignatureAuth) SignRequest(r *http.Request) error {
 
 	headers := []string{"request-line", "host", "date", "digest", "content-length"}
 
-	sigAuthHeader := SignatureAuthHeader{KeyId: s.authService.GetServiceID(), Algorithm: "rsa-sha256", Headers: headers}
+	sigAuthHeader := SignatureAuthHeader{KeyId: s.AuthService.GetServiceID(), Algorithm: "rsa-sha256", Headers: headers}
 
 	sigString, err := BuildSignatureString(r, headers)
 	if err != nil {
@@ -153,7 +153,7 @@ func NewSignatureAuth(serviceKey *rsa.PrivateKey, authService *authservice.AuthS
 		return nil, fmt.Errorf("unable to validate service key registration: please contact the auth service system admin to register a public key for your service - %v", err)
 	}
 
-	return &SignatureAuth{serviceKey: serviceKey, authService: authService}, nil
+	return &SignatureAuth{serviceKey: serviceKey, AuthService: authService}, nil
 }
 
 // BuildSignatureString builds the string to be signed for the provided request

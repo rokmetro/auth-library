@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/mux"
 	"github.com/rokmetro/auth-lib/authutils"
 	"golang.org/x/sync/syncmap"
 	"gopkg.in/go-playground/validator.v9"
@@ -26,10 +28,10 @@ type AuthService struct {
 	// ID of implementing service
 	serviceID string
 
-	services         *syncmap.Map
-	servicesUpdated  *time.Time
-	servicesLock     *sync.RWMutex
-	refreshCacheFreq int
+	services        *syncmap.Map
+	servicesUpdated *time.Time
+	servicesLock    *sync.RWMutex
+	HandlerMap      map[string]http.HandlerFunc
 }
 
 // GetServiceID returns the ID of the implementing service
@@ -43,12 +45,12 @@ func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 	defer a.servicesLock.RUnlock()
 
 	var loadServicesError error
-	now := time.Now()
-	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.refreshCacheFreq) {
-		a.servicesLock.RUnlock()
-		loadServicesError = a.LoadServices()
-		a.servicesLock.RLock()
-	}
+	// now := time.Now()
+	// if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.refreshCacheFreq) {
+	// 	a.servicesLock.RUnlock()
+	// 	loadServicesError = a.LoadServices()
+	// 	a.servicesLock.RLock()
+	// }
 
 	var service ServiceReg
 
@@ -70,8 +72,8 @@ func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 
 // LoadServices loads the subscribed service registration records and caches them
 // 	This function will be called periodically after refreshCacheFreq, but can be called directly to force a cache refresh
-func (a *AuthService) LoadServices() error {
-	services, loadServicesError := a.serviceLoader.LoadServices()
+func (a *AuthService) LoadServices(servicesList []string) error {
+	services, loadServicesError := a.serviceLoader.LoadServices(servicesList)
 	if services != nil {
 		a.setServices(services)
 	}
@@ -91,7 +93,7 @@ func (a *AuthService) SubscribeServices(serviceIDs []string, reload bool) error 
 	}
 
 	if reload && newSub {
-		err := a.LoadServices()
+		err := a.LoadServices(nil)
 		if err != nil {
 			return fmt.Errorf("error loading service registrations: %v", err)
 		}
@@ -105,12 +107,6 @@ func (a *AuthService) UnsubscribeServices(serviceIDs []string) {
 	for _, serviceID := range serviceIDs {
 		a.serviceLoader.UnsubscribeService(serviceID)
 	}
-}
-
-// SetCacheRefreshFreq sets the frequency at which cached key information is refreshed in minutes
-// 	The default value is 720 (12 hours)
-func (a *AuthService) SetCacheRefreshFreq(freq int) {
-	a.refreshCacheFreq = freq
 }
 
 // ValidateServiceRegistration validates that the implementing service has a valid registration for the provided service ID and hostname
@@ -159,7 +155,9 @@ func (a *AuthService) ValidateServiceRegistrationKey(privKey *rsa.PrivateKey) er
 func (a *AuthService) setServices(services []ServiceReg) {
 	a.servicesLock.Lock()
 
-	a.services = &syncmap.Map{}
+	if a.services == nil {
+		a.services = &syncmap.Map{}
+	}
 	if len(services) > 0 {
 		for _, service := range services {
 			a.services.Store(service.ServiceID, service)
@@ -174,8 +172,13 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	// Subscribe to the implementing service to validate registration
 	serviceLoader.SubscribeService(serviceID)
 
-	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, refreshCacheFreq: 720}
-	err := auth.LoadServices()
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID}
+	handlerMap := map[string]http.HandlerFunc{
+		"/services/update": auth.UpdateServices,
+	}
+	auth.HandlerMap = handlerMap
+
+	err := auth.LoadServices(nil)
 	if err != nil {
 		return nil, fmt.Errorf("error loading services: %v", err)
 	}
@@ -188,12 +191,81 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	return auth, nil
 }
 
+// UpdateServices parses a request to inform an implementing service that subscribed service registrations may have changed
+func (a *AuthService) UpdateServices(w http.ResponseWriter, req *http.Request) {
+	params := mux.Vars(req)
+	idString := params["ids"]
+	if len(idString) <= 0 {
+		http.Error(w, "service ids are required", http.StatusBadRequest)
+		return
+	}
+
+	oodRegistrations := make([]string, 0)
+	subscribedServices := a.serviceLoader.GetSubscribedServices()
+	idList := strings.Split(idString, ",")
+	for _, id := range idList {
+		if id == "auth" {
+			body, err := ioutil.ReadAll(req.Body)
+			if err != nil {
+				http.Error(w, "error reading body of auth registration update", http.StatusBadRequest)
+				return
+			}
+
+			var services []ServiceReg
+			err = json.Unmarshal(body, &services)
+			if err != nil {
+				http.Error(w, "error on unmarshal auth registration update", http.StatusBadRequest)
+				return
+			}
+
+			validate := validator.New()
+			err = validate.Struct(services)
+			if err != nil {
+				http.Error(w, "error validating auth registration update", http.StatusBadRequest)
+				return
+			}
+
+			serviceErrors := map[string]error{}
+			for _, service := range services {
+				err = service.PubKey.LoadKeyFromPem()
+				if err != nil {
+					serviceErrors[service.ServiceID] = err
+				}
+			}
+
+			if len(serviceErrors) > 0 {
+				log.Printf("error loading services: %v\n", serviceErrors)
+				http.Error(w, "error loading auth registration update", http.StatusBadRequest)
+				return
+			} else {
+				a.setServices(services)
+			}
+		} else {
+			subscribed := false
+			for _, service := range subscribedServices {
+				if service == id {
+					subscribed = true
+					break
+				}
+			}
+			if subscribed {
+				oodRegistrations = append(oodRegistrations, id)
+			}
+		}
+	}
+	if len(oodRegistrations) > 0 {
+		go a.LoadServices(oodRegistrations)
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Success"))
+}
+
 // -------------------- ServiceRegLoader --------------------
 
 // ServiceRegLoader declares an interface to load the service registrations for specified services
 type ServiceRegLoader interface {
 	// LoadServices loads the service registration records for all subscribed services
-	LoadServices() ([]ServiceReg, error)
+	LoadServices(servicesList []string) ([]ServiceReg, error)
 	//GetSubscribedServices returns the list of currently subscribed services
 	GetSubscribedServices() []string
 	// SubscribeService subscribes the loader to the given service
@@ -211,7 +283,7 @@ type RemoteServiceRegLoaderImpl struct {
 }
 
 // LoadServices implements ServiceRegLoader interface
-func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
+func (r *RemoteServiceRegLoaderImpl) LoadServices(servicesList []string) ([]ServiceReg, error) {
 	if len(r.GetSubscribedServices()) == 0 {
 		return nil, nil
 	}
@@ -224,7 +296,12 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 		return nil, fmt.Errorf("error formatting request to load services: %v", err)
 	}
 
-	servicesQuery := strings.Join(r.GetSubscribedServices(), ",")
+	var servicesQuery string
+	if len(servicesList) == 0 {
+		servicesQuery = strings.Join(r.GetSubscribedServices(), ",")
+	} else {
+		servicesQuery = strings.Join(servicesList, ",")
+	}
 
 	q := req.URL.Query()
 	q.Add("ids", servicesQuery)
