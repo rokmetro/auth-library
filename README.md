@@ -18,7 +18,8 @@ Import the `auth-library/authservice` package into your code using this template
 package yours
 
 import (
-  "testing"
+  ...
+
   "github.com/rokmetro/auth-library/authservice"
 )
 

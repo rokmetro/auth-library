@@ -8,8 +8,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/rokmetro/auth-lib/authservice"
-	"github.com/rokmetro/auth-lib/sigauth"
+	"github.com/rokmetro/auth-library/authservice"
+	"github.com/rokmetro/auth-library/sigauth"
 )
 
 type WebAdapter struct {

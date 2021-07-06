@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/rokmetro/auth-lib/authservice"
-	"github.com/rokmetro/auth-lib/authservice/mocks"
-	"github.com/rokmetro/auth-lib/internal/testutils"
-	"github.com/rokmetro/auth-lib/sigauth"
+	"github.com/rokmetro/auth-library/authservice"
+	"github.com/rokmetro/auth-library/authservice/mocks"
+	"github.com/rokmetro/auth-library/internal/testutils"
+	"github.com/rokmetro/auth-library/sigauth"
 )
 
 func setupTestSignatureAuth(mockLoader *mocks.ServiceRegLoader) (*sigauth.SignatureAuth, error) {

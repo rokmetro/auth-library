@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/rokmetro/auth-lib/authservice"
-	"github.com/rokmetro/auth-lib/authutils"
+	"github.com/rokmetro/auth-library/authservice"
+	"github.com/rokmetro/auth-library/authutils"
 )
 
 // Claims represents the standard claims included in access tokens

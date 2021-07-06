@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	authservice "github.com/rokmetro/auth-lib/authservice"
+	authservice "github.com/rokmetro/auth-library/authservice"
 	mock "github.com/stretchr/testify/mock"
 )
 

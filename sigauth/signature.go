@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/rokmetro/auth-lib/authservice"
-	"github.com/rokmetro/auth-lib/authutils"
+	"github.com/rokmetro/auth-library/authservice"
+	"github.com/rokmetro/auth-library/authutils"
 	"gopkg.in/go-playground/validator.v9"
 )
 

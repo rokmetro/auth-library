@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/rokmetro/auth-lib/authservice"
-	"github.com/rokmetro/auth-lib/authservice/mocks"
-	"github.com/rokmetro/auth-lib/internal/testutils"
-	"github.com/rokmetro/auth-lib/tokenauth"
+	"github.com/rokmetro/auth-library/authservice"
+	"github.com/rokmetro/auth-library/authservice/mocks"
+	"github.com/rokmetro/auth-library/internal/testutils"
+	"github.com/rokmetro/auth-library/tokenauth"
 )
 
 func setupTestTokenAuth(acceptRokwire bool, mockLoader *mocks.ServiceRegLoader) (*tokenauth.TokenAuth, error) {

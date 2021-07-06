@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/rokmetro/auth-lib/authservice"
-	"github.com/rokmetro/auth-lib/authutils"
-	"github.com/rokmetro/auth-lib/internal/testutils"
+	"github.com/rokmetro/auth-library/authservice"
+	"github.com/rokmetro/auth-library/authutils"
+	"github.com/rokmetro/auth-library/internal/testutils"
 )
 
 func setupPubKeyFromPem(pem string) *authservice.PubKey {

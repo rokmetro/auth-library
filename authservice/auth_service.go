@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/rokmetro/auth-lib/authutils"
+	"github.com/rokmetro/auth-library/authutils"
 	"golang.org/x/sync/syncmap"
 	"gopkg.in/go-playground/validator.v9"
 )

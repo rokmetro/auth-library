@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/rokmetro/auth-lib/authservice"
-	"github.com/rokmetro/auth-lib/tokenauth"
+	"github.com/rokmetro/auth-library/authservice"
+	"github.com/rokmetro/auth-library/tokenauth"
 )
 
 type WebAdapter struct {
