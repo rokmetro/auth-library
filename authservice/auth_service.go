@@ -107,12 +107,6 @@ func (a *AuthService) UnsubscribeServices(serviceIDs []string) {
 	}
 }
 
-// SetCacheRefreshFreq sets the frequency at which cached key information is refreshed in minutes
-// 	The default value is 720 (12 hours)
-func (a *AuthService) SetCacheRefreshFreq(freq int) {
-	a.refreshCacheFreq = freq
-}
-
 // ValidateServiceRegistration validates that the implementing service has a valid registration for the provided service ID and hostname
 func (a *AuthService) ValidateServiceRegistration(serviceHost string) error {
 	service, err := a.GetServiceReg(a.serviceID)
@@ -149,11 +143,19 @@ func (a *AuthService) ValidateServiceRegistrationKey(privKey *rsa.PrivateKey) er
 		}
 	}
 
-	if *service.PubKey.Key != privKey.PublicKey {
+	if service.PubKey.Key.Equal(privKey.PublicKey) {
 		return fmt.Errorf("service pub key does not match for id %s", a.serviceID)
 	}
 
 	return nil
+}
+
+// SetRefreshCacheFreq sets the frequency at which cached service registration records are refreshed in minutes
+// 	The default value is 60
+func (a *AuthService) SetRefreshCacheFreq(freq int) {
+	a.servicesLock.Lock()
+	a.refreshCacheFreq = freq
+	a.servicesLock.Unlock()
 }
 
 func (a *AuthService) setServices(services []ServiceReg) {
@@ -166,6 +168,9 @@ func (a *AuthService) setServices(services []ServiceReg) {
 		}
 	}
 
+	time := time.Now()
+	a.servicesUpdated = &time
+
 	a.servicesLock.Unlock()
 }
 
@@ -174,7 +179,10 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	// Subscribe to the implementing service to validate registration
 	serviceLoader.SubscribeService(serviceID)
 
-	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, refreshCacheFreq: 720}
+	lock := &sync.RWMutex{}
+	services := &syncmap.Map{}
+
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock, refreshCacheFreq: 60}
 	err := auth.LoadServices()
 	if err != nil {
 		return nil, fmt.Errorf("error loading services: %v", err)
@@ -183,6 +191,23 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	err = auth.ValidateServiceRegistration(serviceHost)
 	if err != nil {
 		return nil, fmt.Errorf("unable to validate service registration: please contact the auth service system admin to register your service - %v", err)
+	}
+
+	return auth, nil
+}
+
+// NewTestAuthService creates and configures a new AuthService instance for testing purposes
+func NewTestAuthService(serviceID string, serviceHost string, serviceLoader ServiceRegLoader) (*AuthService, error) {
+	// Subscribe to the implementing service to validate registration
+	serviceLoader.SubscribeService(serviceID)
+
+	lock := &sync.RWMutex{}
+	services := &syncmap.Map{}
+
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock, refreshCacheFreq: 60}
+	err := auth.LoadServices()
+	if err != nil {
+		return nil, fmt.Errorf("error loading services: %v", err)
 	}
 
 	return auth, nil
@@ -353,6 +378,7 @@ type PubKey struct {
 func (p *PubKey) LoadKeyFromPem() error {
 	key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(p.KeyPem))
 	if err != nil {
+		p.Key = nil
 		return fmt.Errorf("error parsing key string: %v", err)
 	}
 
