@@ -372,22 +372,27 @@ type PubKey struct {
 	Key    *rsa.PublicKey
 	KeyPem string `json:"key_pem" validate:"required"`
 	Alg    string `json:"alg" validate:"required"`
+	Kid    string
 }
 
-// LoadKeyFromPem parses "KeyPem" and sets the result to "Key"
+// LoadKeyFromPem parses "KeyPem" and sets the "Key" and "Kid"
 func (p *PubKey) LoadKeyFromPem() error {
 	key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(p.KeyPem))
 	if err != nil {
 		p.Key = nil
+		p.Kid = ""
 		return fmt.Errorf("error parsing key string: %v", err)
 	}
 
+	kid, err := authutils.GetKeyFingerprint(key)
+	if err != nil {
+		p.Key = nil
+		p.Kid = ""
+		return fmt.Errorf("error getting key fingerprint: %v", err)
+	}
+
 	p.Key = key
+	p.Kid = kid
 
 	return nil
-}
-
-// GetFingerprint returns a fingerprint for the key
-func (p *PubKey) GetFingerprint() (string, error) {
-	return authutils.GetKeyFingerprint(p.KeyPem)
 }

@@ -31,6 +31,10 @@ func GetSamplePubKey() *authservice.PubKey {
 	return &key
 }
 
+func GetSamplePubKeyFingerprint() string {
+	return "SHA256:I3HxcO3FpUM6MG7+rCASuePfl92JEcdz2htV7SP0Y20="
+}
+
 func GetSamplePrivKeyPem() string {
 	// Matches GetSamplePubKeyPem
 	return `-----BEGIN RSA PRIVATE KEY-----

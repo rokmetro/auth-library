@@ -1,6 +1,7 @@
 package authutils_test
 
 import (
+	"crypto/rsa"
 	"encoding/hex"
 	"reflect"
 	"testing"
@@ -10,10 +11,10 @@ import (
 )
 
 func TestGetKeyFingerprint(t *testing.T) {
-	key := testutils.GetSamplePubKeyPem()
+	key := testutils.GetSamplePubKey()
 
 	type args struct {
-		keyPem string
+		key *rsa.PublicKey
 	}
 	tests := []struct {
 		name    string
@@ -21,12 +22,12 @@ func TestGetKeyFingerprint(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"returns fingerprint for valid PEM", args{key}, "8Kxg2cK9x03ofiEevL0hwAoW330xdy4vjD713fLLkzs=", false},
-		{"errors on invalid PEM", args{"rsa-key"}, "", true},
+		{"returns fingerprint for valid key", args{key.Key}, testutils.GetSamplePubKeyFingerprint(), false},
+		{"errors on nil key", args{nil}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := authutils.GetKeyFingerprint(tt.args.keyPem)
+			got, err := authutils.GetKeyFingerprint(tt.args.key)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetKeyFingerprint() = %v, error = %v, wantErr %v", got, err, tt.wantErr)
 				return
