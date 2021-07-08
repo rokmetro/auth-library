@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/rokmetro/auth-library/authorization"
 	"github.com/rokmetro/auth-library/authservice"
 	"github.com/rokmetro/auth-library/authutils"
 )
@@ -25,6 +26,8 @@ type Claims struct {
 type TokenAuth struct {
 	authService         *authservice.AuthService
 	acceptRokwireTokens bool
+	permissionAuth      authorization.Authorization
+	scopeAuth           authorization.Authorization
 }
 
 // CheckToken validates the provided token and returns the token claims
@@ -161,6 +164,14 @@ func (t *TokenAuth) ValidatePermissionsClaim(claims *Claims, requiredPermissions
 	return fmt.Errorf("required permissions not found: required %v, found %s", requiredPermissions, claims.Permissions)
 }
 
+// AuthorizeRequestPermissions will validate that the provided token claims have access to the requested object
+func (t *TokenAuth) AuthorizeRequestPermissions(claims *Claims, request *http.Request) error {
+	permissions := strings.Split(claims.Permissions, ",")
+	object := request.URL.Path
+	action := request.Method
+	return t.permissionAuth.Any(permissions, object, action)
+}
+
 // ValidateScopeClaim will validate that the provided token claims contain the required scope
 // 	If an empty required scope is provided, the claims must contain a valid global scope such as 'all' or '{service}:all'
 //	Returns nil on success and error on failure.
@@ -195,10 +206,36 @@ func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) err
 	return fmt.Errorf("required scope not found: required %s, found %s", requiredScope, claims.Scope)
 }
 
+// AuthorizeRequestScope will authorize the request if the provided scopes pass the casbin enforcer
+//	Returns nil on success and error on failure.
+func (t *TokenAuth) AuthorizeRequestScope(claims *Claims, request *http.Request) error {
+	if claims.Scope == "" {
+		return errors.New("scope claim empty")
+	}
+
+	// Grant access for global scope
+	if claims.Scope == "all" {
+		return nil
+	}
+
+	scopes := strings.Split(claims.Scope, " ")
+
+	// Grant access if claims contain service-level global scope
+	serviceAll := t.authService.GetServiceID() + ":all"
+	if authutils.ContainsString(scopes, serviceAll) {
+		return nil
+	}
+
+	object := request.URL.Path
+	action := request.Method
+	return t.scopeAuth.Any(scopes, object, action)
+}
+
 // NewTokenAuth creates and configures a new TokenAuth instance
-func NewTokenAuth(acceptRokwireTokens bool, authService *authservice.AuthService) (*TokenAuth, error) {
+// authorization maybe nil if performing manual authorization
+func NewTokenAuth(acceptRokwireTokens bool, authService *authservice.AuthService, permissionAuth authorization.Authorization, scopeAuth authorization.Authorization) (*TokenAuth, error) {
 	authService.SubscribeServices([]string{"auth"}, true)
-	return &TokenAuth{acceptRokwireTokens: acceptRokwireTokens, authService: authService}, nil
+	return &TokenAuth{acceptRokwireTokens: acceptRokwireTokens, authService: authService, permissionAuth: permissionAuth, scopeAuth: scopeAuth}, nil
 }
 
 // -------------------------- Helper Functions --------------------------

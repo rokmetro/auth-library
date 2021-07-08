@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/rokmetro/auth-library/authorization"
 	"github.com/rokmetro/auth-library/authservice"
 	"github.com/rokmetro/auth-library/authservice/mocks"
 	"github.com/rokmetro/auth-library/internal/testutils"
@@ -18,7 +19,9 @@ func setupTestTokenAuth(acceptRokwire bool, mockLoader *mocks.ServiceRegLoader) 
 	if err != nil {
 		return nil, fmt.Errorf("error setting up test auth service: %v", err)
 	}
-	return tokenauth.NewTokenAuth(acceptRokwire, auth)
+	permissionAuth := authorization.NewCasbinAuthorization("./permission_authorization_policy.csv")
+	scopeAuth := authorization.NewCasbinAuthorization("./scope_authorization_policy.csv")
+	return tokenauth.NewTokenAuth(acceptRokwire, auth, permissionAuth, scopeAuth)
 }
 
 func getSampleTokenClaims() *tokenauth.Claims {

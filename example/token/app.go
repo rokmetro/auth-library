@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/rokmetro/auth-library/authorization"
 	"github.com/rokmetro/auth-library/authservice"
 	"github.com/rokmetro/auth-library/tokenauth"
 )
@@ -48,16 +49,32 @@ func (we WebAdapter) tokenAuthWrapFunc(handler http.HandlerFunc, permissions []s
 			return
 		}
 
-		err = we.tokenAuth.ValidatePermissionsClaim(claims, permissions)
+		err = we.tokenAuth.ValidateScopeClaim(claims, scope)
 		if err != nil {
-			log.Printf("Permission error: %v\n", err)
+			log.Printf("Scope error: %v\n", err)
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
 
-		err = we.tokenAuth.ValidateScopeClaim(claims, scope)
+		log.Printf("Authentication successful for user: %v", claims)
+		handler(w, req)
+	}
+}
+
+// adminTokenWrapFunc
+func (we WebAdapter) adminTokenWrapFunc(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		// Authenticate token
+		claims, err := we.tokenAuth.CheckRequestTokens(req)
 		if err != nil {
-			log.Printf("Scope error: %v\n", err)
+			log.Printf("Authentication error: %v\n", err)
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		err = we.tokenAuth.AuthorizeRequestPermissions(claims, req)
+		if err != nil {
+			log.Printf("Permission error: %v\n", err)
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
@@ -82,8 +99,10 @@ func main() {
 		log.Fatalf("Error initializing auth service: %v", err)
 	}
 
+	permissionAuth := authorization.NewCasbinAuthorization("./permission_authorization_policy.csv")
+	scopeAuth := authorization.NewCasbinAuthorization("./scope_authorization_policy.csv")
 	// Instantiate TokenAuth instance to perform token validation
-	tokenAuth, err := tokenauth.NewTokenAuth(true, authService)
+	tokenAuth, err := tokenauth.NewTokenAuth(true, authService, permissionAuth, scopeAuth)
 	if err != nil {
 		log.Fatalf("Error intitializing token auth: %v", err)
 	}

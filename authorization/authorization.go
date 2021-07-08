@@ -2,8 +2,15 @@ package authorization
 
 import (
 	"fmt"
+	"path/filepath"
+	"runtime"
 
 	"github.com/casbin/casbin"
+)
+
+var (
+	_, b, _, _ = runtime.Caller(0)
+	basepath   = filepath.Dir(b)
 )
 
 // Authorization is a standard authorization interface that can be reused by various auth types.
@@ -26,7 +33,7 @@ func (c *CasbinAuthorization) Any(values []string, object string, action string)
 		}
 	}
 
-	return fmt.Errorf("Access control error: trying to apply %s operation for %s", action, object)
+	return fmt.Errorf("access control error: %v trying to apply %s operation for %s", values, action, object)
 }
 
 // All will validate that if the casbin enforcer gives access to all the provided values
@@ -34,9 +41,16 @@ func (c *CasbinAuthorization) Any(values []string, object string, action string)
 func (c *CasbinAuthorization) All(values []string, object string, action string) error {
 	for _, value := range values {
 		if !c.enforcer.Enforce(value, object, action) {
-			return fmt.Errorf("Access control error: %s is trying to apply %s operation for %s", value, action, object)
+			return fmt.Errorf("access control error: %s is trying to apply %s operation for %s", value, action, object)
 		}
 	}
 
 	return nil
+}
+
+// NewCasbinAuthorization returns a new casbin enforcer
+func NewCasbinAuthorization(policyPath string) *CasbinAuthorization {
+	enforcer := casbin.NewEnforcer(basepath+"/authorization_model.conf", policyPath)
+
+	return &CasbinAuthorization{enforcer}
 }

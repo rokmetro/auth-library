@@ -78,7 +78,7 @@ func (a *AuthService) LoadServices() error {
 	return loadServicesError
 }
 
-// SubscribeService subscribes to the provided services
+// SubscribeServices subscribes to the provided services
 //	If reload is true and ont of the services is not already subscribed, the service registrations will be reloaded immediately
 func (a *AuthService) SubscribeServices(serviceIDs []string, reload bool) error {
 	newSub := false
@@ -100,7 +100,7 @@ func (a *AuthService) SubscribeServices(serviceIDs []string, reload bool) error 
 	return nil
 }
 
-// UnsubscribeService unsubscribes from the provided service
+// UnsubscribeServices unsubscribes from the provided service
 func (a *AuthService) UnsubscribeServices(serviceIDs []string) {
 	for _, serviceID := range serviceIDs {
 		a.serviceLoader.UnsubscribeService(serviceID)
