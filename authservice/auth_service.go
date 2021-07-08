@@ -30,6 +30,9 @@ type AuthService struct {
 	servicesUpdated *time.Time
 	servicesLock    *sync.RWMutex
 	HandlerMap      map[string]http.HandlerFunc
+
+	minRefreshCacheFreq int
+	maxRefreshCacheFreq int
 }
 
 // GetServiceID returns the ID of the implementing service
@@ -43,12 +46,12 @@ func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 	defer a.servicesLock.RUnlock()
 
 	var loadServicesError error
-	// now := time.Now()
-	// if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.refreshCacheFreq) {
-	// 	a.servicesLock.RUnlock()
-	// 	loadServicesError = a.LoadServices()
-	// 	a.servicesLock.RLock()
-	// }
+	now := time.Now()
+	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.maxRefreshCacheFreq) {
+		a.servicesLock.RUnlock()
+		loadServicesError = a.LoadServices()
+		a.servicesLock.RLock()
+	}
 
 	var service ServiceReg
 
@@ -150,13 +153,21 @@ func (a *AuthService) ValidateServiceRegistrationKey(privKey *rsa.PrivateKey) er
 	return nil
 }
 
-// SetRefreshCacheFreq sets the frequency at which cached service registration records are refreshed in minutes
+// SetMinRefreshCacheFreq sets the minimum frequency at which cached service registration records are refreshed in minutes
+// 	The default value is 1
+func (a *AuthService) SetMinRefreshCacheFreq(freq int) {
+	a.servicesLock.Lock()
+	a.minRefreshCacheFreq = freq
+	a.servicesLock.Unlock()
+}
+
+// SetMaxRefreshCacheFreq sets the minimum frequency at which cached service registration records are refreshed in minutes
 // 	The default value is 60
-// func (a *AuthService) SetRefreshCacheFreq(freq int) {
-// 	a.servicesLock.Lock()
-// 	a.refreshCacheFreq = freq
-// 	a.servicesLock.Unlock()
-// }
+func (a *AuthService) SetMaxRefreshCacheFreq(freq int) {
+	a.servicesLock.Lock()
+	a.maxRefreshCacheFreq = freq
+	a.servicesLock.Unlock()
+}
 
 func (a *AuthService) setServices(services []ServiceReg) {
 	a.servicesLock.Lock()
@@ -182,7 +193,8 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	lock := &sync.RWMutex{}
 	services := &syncmap.Map{}
 
-	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock}
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock,
+		minRefreshCacheFreq: 1, maxRefreshCacheFreq: 60}
 	handlerMap := map[string]http.HandlerFunc{
 		"/services/update": auth.UpdateServices,
 	}
@@ -201,11 +213,23 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	return auth, nil
 }
 
-// UpdateServices parses a request to inform an implementing service that subscribed service registrations may have changed
+// UpdateServices responds to a request to inform an implementing service that subscribed service registrations may have changed
 func (a *AuthService) UpdateServices(w http.ResponseWriter, req *http.Request) {
 	go a.LoadServices()
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Success"))
+}
+
+func (a *AuthService) CheckForRefresh() (bool, error) {
+	var loadServicesError error
+	now := time.Now()
+	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.minRefreshCacheFreq) {
+		a.servicesLock.RUnlock()
+		loadServicesError = a.LoadServices()
+		a.servicesLock.RLock()
+		return true, loadServicesError
+	}
+	return false, loadServicesError
 }
 
 // NewTestAuthService creates and configures a new AuthService instance for testing purposes
@@ -216,7 +240,7 @@ func NewTestAuthService(serviceID string, serviceHost string, serviceLoader Serv
 	lock := &sync.RWMutex{}
 	services := &syncmap.Map{}
 
-	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock} //, refreshCacheFreq: 60}
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock}
 	err := auth.LoadServices()
 	if err != nil {
 		return nil, fmt.Errorf("error loading services: %v", err)
