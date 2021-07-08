@@ -7,18 +7,17 @@ import (
 	"strings"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/rokmetro/auth-lib/authservice"
-	"github.com/rokmetro/auth-lib/authutils"
+	"github.com/rokmetro/auth-library/authservice"
+	"github.com/rokmetro/auth-library/authutils"
 )
 
 // Claims represents the standard claims included in access tokens
 type Claims struct {
-	// Required Standard Claims: sub, exp, iat
+	// Required Standard Claims: sub, aud, exp, iat
 	jwt.StandardClaims
-	ClientID    string `json:"client_id" validate:"required"`
+	OrgID       string `json:"org_id" validate:"required"`
 	Purpose     string `json:"purpose" validate:"required"`
 	Permissions string `json:"permissions"`
-	Groups      string `json:"groups"`
 	Scope       string `json:"scope"`
 }
 
@@ -61,8 +60,8 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	if claims.IssuedAt == 0 {
 		return nil, errors.New("token iat missing")
 	}
-	if claims.ClientID == "" {
-		return nil, errors.New("token client_id missing")
+	if claims.OrgID == "" {
+		return nil, errors.New("token org_id missing")
 	}
 	if claims.Issuer != authServiceReg.Host {
 		return nil, fmt.Errorf("token iss (%s) does not match %s", claims.Issuer, authServiceReg.Host)
@@ -133,8 +132,8 @@ func (t *TokenAuth) ValidateCsrfTokenClaims(accessClaims *Claims, csrfClaims *Cl
 		return fmt.Errorf("csrf sub (%s) does not match access sub (%s)", csrfClaims.Subject, accessClaims.Subject)
 	}
 
-	if csrfClaims.ClientID != accessClaims.ClientID {
-		return fmt.Errorf("csrf client_id (%s) does not match access client_id (%s)", csrfClaims.ClientID, accessClaims.ClientID)
+	if csrfClaims.OrgID != accessClaims.OrgID {
+		return fmt.Errorf("csrf org_id (%s) does not match access org_id (%s)", csrfClaims.OrgID, accessClaims.OrgID)
 	}
 
 	return nil

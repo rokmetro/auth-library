@@ -6,15 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/gorilla/mux"
-	"github.com/rokmetro/auth-lib/authutils"
+	"github.com/rokmetro/auth-library/authutils"
 	"golang.org/x/sync/syncmap"
 	"gopkg.in/go-playground/validator.v9"
 )
@@ -72,8 +70,8 @@ func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 
 // LoadServices loads the subscribed service registration records and caches them
 // 	This function will be called periodically after refreshCacheFreq, but can be called directly to force a cache refresh
-func (a *AuthService) LoadServices(servicesList []string) error {
-	services, loadServicesError := a.serviceLoader.LoadServices(servicesList)
+func (a *AuthService) LoadServices() error {
+	services, loadServicesError := a.serviceLoader.LoadServices()
 	if services != nil {
 		a.setServices(services)
 	}
@@ -93,7 +91,7 @@ func (a *AuthService) SubscribeServices(serviceIDs []string, reload bool) error 
 	}
 
 	if reload && newSub {
-		err := a.LoadServices(nil)
+		err := a.LoadServices()
 		if err != nil {
 			return fmt.Errorf("error loading service registrations: %v", err)
 		}
@@ -145,24 +143,33 @@ func (a *AuthService) ValidateServiceRegistrationKey(privKey *rsa.PrivateKey) er
 		}
 	}
 
-	if *service.PubKey.Key != privKey.PublicKey {
+	if service.PubKey.Key.Equal(privKey.PublicKey) {
 		return fmt.Errorf("service pub key does not match for id %s", a.serviceID)
 	}
 
 	return nil
 }
 
+// SetRefreshCacheFreq sets the frequency at which cached service registration records are refreshed in minutes
+// 	The default value is 60
+// func (a *AuthService) SetRefreshCacheFreq(freq int) {
+// 	a.servicesLock.Lock()
+// 	a.refreshCacheFreq = freq
+// 	a.servicesLock.Unlock()
+// }
+
 func (a *AuthService) setServices(services []ServiceReg) {
 	a.servicesLock.Lock()
 
-	if a.services == nil {
-		a.services = &syncmap.Map{}
-	}
+	a.services = &syncmap.Map{}
 	if len(services) > 0 {
 		for _, service := range services {
 			a.services.Store(service.ServiceID, service)
 		}
 	}
+
+	time := time.Now()
+	a.servicesUpdated = &time
 
 	a.servicesLock.Unlock()
 }
@@ -172,13 +179,16 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	// Subscribe to the implementing service to validate registration
 	serviceLoader.SubscribeService(serviceID)
 
-	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID}
+	lock := &sync.RWMutex{}
+	services := &syncmap.Map{}
+
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock}
 	handlerMap := map[string]http.HandlerFunc{
 		"/services/update": auth.UpdateServices,
 	}
 	auth.HandlerMap = handlerMap
 
-	err := auth.LoadServices(nil)
+	err := auth.LoadServices()
 	if err != nil {
 		return nil, fmt.Errorf("error loading services: %v", err)
 	}
@@ -193,71 +203,26 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 
 // UpdateServices parses a request to inform an implementing service that subscribed service registrations may have changed
 func (a *AuthService) UpdateServices(w http.ResponseWriter, req *http.Request) {
-	params := mux.Vars(req)
-	idString := params["ids"]
-	if len(idString) <= 0 {
-		http.Error(w, "service ids are required", http.StatusBadRequest)
-		return
-	}
-
-	oodRegistrations := make([]string, 0)
-	subscribedServices := a.serviceLoader.GetSubscribedServices()
-	idList := strings.Split(idString, ",")
-	for _, id := range idList {
-		if id == "auth" {
-			body, err := ioutil.ReadAll(req.Body)
-			if err != nil {
-				http.Error(w, "error reading body of auth registration update", http.StatusBadRequest)
-				return
-			}
-
-			var services []ServiceReg
-			err = json.Unmarshal(body, &services)
-			if err != nil {
-				http.Error(w, "error on unmarshal auth registration update", http.StatusBadRequest)
-				return
-			}
-
-			validate := validator.New()
-			err = validate.Struct(services)
-			if err != nil {
-				http.Error(w, "error validating auth registration update", http.StatusBadRequest)
-				return
-			}
-
-			serviceErrors := map[string]error{}
-			for _, service := range services {
-				err = service.PubKey.LoadKeyFromPem()
-				if err != nil {
-					serviceErrors[service.ServiceID] = err
-				}
-			}
-
-			if len(serviceErrors) > 0 {
-				log.Printf("error loading services: %v\n", serviceErrors)
-				http.Error(w, "error loading auth registration update", http.StatusBadRequest)
-				return
-			} else {
-				a.setServices(services)
-			}
-		} else {
-			subscribed := false
-			for _, service := range subscribedServices {
-				if service == id {
-					subscribed = true
-					break
-				}
-			}
-			if subscribed {
-				oodRegistrations = append(oodRegistrations, id)
-			}
-		}
-	}
-	if len(oodRegistrations) > 0 {
-		go a.LoadServices(oodRegistrations)
-	}
+	go a.LoadServices()
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Success"))
+}
+
+// NewTestAuthService creates and configures a new AuthService instance for testing purposes
+func NewTestAuthService(serviceID string, serviceHost string, serviceLoader ServiceRegLoader) (*AuthService, error) {
+	// Subscribe to the implementing service to validate registration
+	serviceLoader.SubscribeService(serviceID)
+
+	lock := &sync.RWMutex{}
+	services := &syncmap.Map{}
+
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock} //, refreshCacheFreq: 60}
+	err := auth.LoadServices()
+	if err != nil {
+		return nil, fmt.Errorf("error loading services: %v", err)
+	}
+
+	return auth, nil
 }
 
 // -------------------- ServiceRegLoader --------------------
@@ -265,7 +230,7 @@ func (a *AuthService) UpdateServices(w http.ResponseWriter, req *http.Request) {
 // ServiceRegLoader declares an interface to load the service registrations for specified services
 type ServiceRegLoader interface {
 	// LoadServices loads the service registration records for all subscribed services
-	LoadServices(servicesList []string) ([]ServiceReg, error)
+	LoadServices() ([]ServiceReg, error)
 	//GetSubscribedServices returns the list of currently subscribed services
 	GetSubscribedServices() []string
 	// SubscribeService subscribes the loader to the given service
@@ -283,7 +248,7 @@ type RemoteServiceRegLoaderImpl struct {
 }
 
 // LoadServices implements ServiceRegLoader interface
-func (r *RemoteServiceRegLoaderImpl) LoadServices(servicesList []string) ([]ServiceReg, error) {
+func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 	if len(r.GetSubscribedServices()) == 0 {
 		return nil, nil
 	}
@@ -296,12 +261,7 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices(servicesList []string) ([]Serv
 		return nil, fmt.Errorf("error formatting request to load services: %v", err)
 	}
 
-	var servicesQuery string
-	if len(servicesList) == 0 {
-		servicesQuery = strings.Join(r.GetSubscribedServices(), ",")
-	} else {
-		servicesQuery = strings.Join(servicesList, ",")
-	}
+	servicesQuery := strings.Join(r.GetSubscribedServices(), ",")
 
 	q := req.URL.Query()
 	q.Add("ids", servicesQuery)
@@ -430,6 +390,7 @@ type PubKey struct {
 func (p *PubKey) LoadKeyFromPem() error {
 	key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(p.KeyPem))
 	if err != nil {
+		p.Key = nil
 		return fmt.Errorf("error parsing key string: %v", err)
 	}
 
