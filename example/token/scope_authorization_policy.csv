@@ -1,2 +1,1 @@
-p, admin, /admin/test, (GET)|(POST)|(PUT)|(DELETE)
-p, lite_admin, /admin/test, (GET)
+p, sample:read:test, /test, (GET)
