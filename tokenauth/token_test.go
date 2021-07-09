@@ -19,7 +19,7 @@ func setupTestTokenAuth(acceptRokwire bool, mockLoader *mocks.ServiceRegLoader) 
 	if err != nil {
 		return nil, fmt.Errorf("error setting up test auth service: %v", err)
 	}
-	permissionAuth := authorization.NewCasbinAuthorization("./permission_authorization_policy.csv")
+	permissionAuth := authorization.NewCasbinAuthorization("./permissions_authorization_policy.csv")
 	scopeAuth := authorization.NewCasbinAuthorization("./scope_authorization_policy.csv")
 	return tokenauth.NewTokenAuth(acceptRokwire, auth, permissionAuth, scopeAuth)
 }

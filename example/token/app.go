@@ -99,7 +99,7 @@ func main() {
 		log.Fatalf("Error initializing auth service: %v", err)
 	}
 
-	permissionAuth := authorization.NewCasbinAuthorization("./permission_authorization_policy.csv")
+	permissionAuth := authorization.NewCasbinAuthorization("./permissions_authorization_policy.csv")
 	scopeAuth := authorization.NewCasbinAuthorization("./scope_authorization_policy.csv")
 	// Instantiate TokenAuth instance to perform token validation
 	tokenAuth, err := tokenauth.NewTokenAuth(true, authService, permissionAuth, scopeAuth)
