@@ -224,9 +224,7 @@ func (a *AuthService) CheckForRefresh() (bool, error) {
 	var loadServicesError error
 	now := time.Now()
 	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.minRefreshCacheFreq) {
-		a.servicesLock.RUnlock()
 		loadServicesError = a.LoadServices()
-		a.servicesLock.RLock()
 		return true, loadServicesError
 	}
 	return false, loadServicesError
@@ -240,7 +238,8 @@ func NewTestAuthService(serviceID string, serviceHost string, serviceLoader Serv
 	lock := &sync.RWMutex{}
 	services := &syncmap.Map{}
 
-	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock}
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock,
+		minRefreshCacheFreq: 1, maxRefreshCacheFreq: 60}
 	err := auth.LoadServices()
 	if err != nil {
 		return nil, fmt.Errorf("error loading services: %v", err)

@@ -83,7 +83,7 @@ func main() {
 	}
 
 	// Instantiate TokenAuth instance to perform token validation
-	tokenAuth, err := tokenauth.NewTokenAuth(true, authService, 1024)
+	tokenAuth, err := tokenauth.NewTokenAuth(true, authService)
 	if err != nil {
 		log.Fatalf("Error intitializing token auth: %v", err)
 	}

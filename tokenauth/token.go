@@ -30,13 +30,12 @@ type TokenAuth struct {
 	blacklist     []string
 	blacklistLock *sync.RWMutex
 	blacklistSize int
-	blacklistHead int
 }
 
 // CheckToken validates the provided token and returns the token claims
 func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
-	for _, badToken := range t.blacklist {
-		if token == badToken {
+	for i := len(t.blacklist) - 1; i >= 0; i-- {
+		if token == t.blacklist[i] {
 			return nil, fmt.Errorf("known invalid token")
 		}
 	}
@@ -51,7 +50,7 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	if err != nil {
 		refreshed, refreshErr := t.authService.CheckForRefresh()
 		if refreshErr != nil {
-			return nil, refreshErr
+			return nil, fmt.Errorf("initial token check failed, error on retry: %s", refreshErr)
 		}
 		if refreshed {
 			return t.retryCheckToken(token, purpose)
@@ -117,14 +116,9 @@ func (t *TokenAuth) retryCheckToken(token string, purpose string) (*Claims, erro
 	if retryErr != nil {
 		t.blacklistLock.Lock()
 		if len(t.blacklist) >= t.blacklistSize {
-			t.blacklist[t.blacklistHead] = token
-			t.blacklistHead += 1
-			if t.blacklistHead >= t.blacklistSize {
-				t.blacklistHead = 0
-			}
-		} else {
-			t.blacklist = append(t.blacklist, token)
+			t.blacklist = t.blacklist[1:]
 		}
+		t.blacklist = append(t.blacklist, token)
 		t.blacklistLock.Unlock()
 	}
 	return retryClaims, retryErr
@@ -232,15 +226,23 @@ func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) err
 	return fmt.Errorf("required scope not found: required %s, found %s", requiredScope, claims.Scope)
 }
 
+// SetBlacklistSize sets the maximum size of the token blacklist queue
+// 	The default value is 1024
+func (t *TokenAuth) SetBlacklistSize(size int) {
+	t.blacklistLock.Lock()
+	t.blacklistSize = size
+	t.blacklistLock.Unlock()
+}
+
 // NewTokenAuth creates and configures a new TokenAuth instance
-func NewTokenAuth(acceptRokwireTokens bool, authService *authservice.AuthService, blacklistSize int) (*TokenAuth, error) {
+func NewTokenAuth(acceptRokwireTokens bool, authService *authservice.AuthService) (*TokenAuth, error) {
 	authService.SubscribeServices([]string{"auth"}, true)
 
 	blLock := &sync.RWMutex{}
-	bl := make([]string, blacklistSize)
+	bl := []string{}
 
 	return &TokenAuth{acceptRokwireTokens: acceptRokwireTokens, authService: authService,
-		blacklistLock: blLock, blacklist: bl, blacklistSize: blacklistSize, blacklistHead: 0}, nil
+		blacklistLock: blLock, blacklist: bl, blacklistSize: 1024}, nil
 }
 
 // -------------------------- Helper Functions --------------------------

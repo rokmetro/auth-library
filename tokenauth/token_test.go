@@ -18,7 +18,7 @@ func setupTestTokenAuth(acceptRokwire bool, mockLoader *mocks.ServiceRegLoader) 
 	if err != nil {
 		return nil, fmt.Errorf("error setting up test auth service: %v", err)
 	}
-	return tokenauth.NewTokenAuth(acceptRokwire, auth, 1024)
+	return tokenauth.NewTokenAuth(acceptRokwire, auth)
 }
 
 func getSampleTokenClaims() *tokenauth.Claims {
