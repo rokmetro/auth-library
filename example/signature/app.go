@@ -23,10 +23,6 @@ func (we WebAdapter) Start() {
 	// Service IDs indicate only the "example2" service can access this endpoint
 	http.HandleFunc("/example2/test", we.signatureAuthWrapFunction(we.example2TestHandler, []string{"example2"}))
 
-	for endpoint, handler := range we.signatureAuth.AuthService.HandlerMap {
-		http.HandleFunc(endpoint, we.signatureAuthWrapFunction(handler, []string{"auth"})) // .Methods("POST")
-	}
-
 	http.ListenAndServe(":5000", nil)
 }
 

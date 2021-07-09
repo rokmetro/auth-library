@@ -29,7 +29,6 @@ type AuthService struct {
 	services        *syncmap.Map
 	servicesUpdated *time.Time
 	servicesLock    *sync.RWMutex
-	HandlerMap      map[string]http.HandlerFunc
 
 	minRefreshCacheFreq int
 	maxRefreshCacheFreq int
@@ -195,10 +194,6 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 
 	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock,
 		minRefreshCacheFreq: 1, maxRefreshCacheFreq: 60}
-	handlerMap := map[string]http.HandlerFunc{
-		"/services/update": auth.UpdateServices,
-	}
-	auth.HandlerMap = handlerMap
 
 	err := auth.LoadServices()
 	if err != nil {
@@ -211,13 +206,6 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	}
 
 	return auth, nil
-}
-
-// UpdateServices responds to a request to inform an implementing service that subscribed service registrations may have changed
-func (a *AuthService) UpdateServices(w http.ResponseWriter, req *http.Request) {
-	go a.LoadServices()
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Success"))
 }
 
 func (a *AuthService) CheckForRefresh() (bool, error) {
