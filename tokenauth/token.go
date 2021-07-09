@@ -48,15 +48,7 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 		return authServiceReg.PubKey.Key, nil
 	})
 	if err != nil {
-		refreshed, refreshErr := t.authService.CheckForRefresh()
-		if refreshErr != nil {
-			return nil, fmt.Errorf("initial token check failed, error on retry: %s", refreshErr)
-		}
-		if refreshed {
-			return t.retryCheckToken(token, purpose)
-		} else {
-			return nil, fmt.Errorf("failed to parse token: %v", err)
-		}
+		return nil, fmt.Errorf("failed to parse token: %v", err)
 	}
 
 	if !parsedToken.Valid {
@@ -109,7 +101,15 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	}
 	kid, _ := parsedToken.Header["kid"].(string)
 	if kid != authServiceReg.PubKey.Kid {
-		return nil, fmt.Errorf("token kid (%s) does not match %s", kid, authServiceReg.PubKey.Kid)
+		refreshed, refreshErr := t.authService.CheckForRefresh()
+		if refreshErr != nil {
+			return nil, fmt.Errorf("initial token check failed, error on retry: %s", refreshErr)
+		}
+		if refreshed {
+			return t.retryCheckToken(token, purpose)
+		} else {
+			return nil, fmt.Errorf("token kid (%s) does not match %s", kid, authServiceReg.PubKey.Kid)
+		}
 	}
 
 	return claims, nil
