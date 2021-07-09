@@ -101,11 +101,15 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	// Check token headers
 	alg, _ := parsedToken.Header["alg"].(string)
 	if alg != authServiceReg.PubKey.Alg {
-		return nil, fmt.Errorf("token alg (%v) does not match %s", alg, authServiceReg.PubKey.Alg)
+		return nil, fmt.Errorf("token alg (%s) does not match %s", alg, authServiceReg.PubKey.Alg)
 	}
 	typ, _ := parsedToken.Header["typ"].(string)
 	if typ != "JWT" {
-		return nil, fmt.Errorf("token typ (%v) does not match JWT", typ)
+		return nil, fmt.Errorf("token typ (%s) does not match JWT", typ)
+	}
+	kid, _ := parsedToken.Header["kid"].(string)
+	if kid != authServiceReg.PubKey.Kid {
+		return nil, fmt.Errorf("token kid (%s) does not match %s", kid, authServiceReg.PubKey.Kid)
 	}
 
 	return claims, nil

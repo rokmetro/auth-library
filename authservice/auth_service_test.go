@@ -255,9 +255,10 @@ func TestPubKey_LoadKeyFromPem(t *testing.T) {
 		p       *authservice.PubKey
 		wantErr bool
 		wantKey *rsa.PublicKey
+		wantKid string
 	}{
-		{"return nil and set Key property on valid pem", setupPubKeyFromPem(testutils.GetSamplePubKeyPem()), false, testutils.GetSamplePubKey().Key},
-		{"return error on invalid pem", setupPubKeyFromPem("test"), true, nil},
+		{"return nil and set Key, Kid property on valid pem", setupPubKeyFromPem(testutils.GetSamplePubKeyPem()), false, testutils.GetSamplePubKey().Key, testutils.GetSamplePubKeyFingerprint()},
+		{"return error on invalid pem", setupPubKeyFromPem("test"), true, nil, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -272,6 +273,9 @@ func TestPubKey_LoadKeyFromPem(t *testing.T) {
 				if !tt.p.Key.Equal(tt.wantKey) {
 					t.Errorf("PubKey.LoadKeyFromPem() key = %v, want %v", tt.p.Key, tt.wantKey)
 				}
+			}
+			if tt.p.Kid != tt.wantKid {
+				t.Errorf("PubKey.LoadKeyFromPem() kid = %v, want %v", tt.p.Kid, tt.wantKid)
 			}
 		})
 	}
