@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"github.com/rokmetro/auth-library/authservice"
 	"github.com/rokmetro/auth-library/authservice/mocks"
 	"github.com/rokmetro/auth-library/internal/testutils"
