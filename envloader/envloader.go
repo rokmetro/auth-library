@@ -13,8 +13,20 @@ import (
 )
 
 type EnvLoader interface {
-	GetEnvVar(logger *loglib.StandardLogger, key string, required bool) string
-	PrintEnvVar(logger *loglib.StandardLogger, name string, value string)
+	GetEnvVar(key string, required bool) string
+	PrintEnvVar(name string, value string)
+}
+
+func NewEnvLoader(version string, logger *loglib.StandardLogger) EnvLoader {
+	env := os.Getenv("ENV_TYPE")
+	switch env {
+	case "aws_secrets_manager":
+		secretName := os.Getenv("APP_SECRET_ARN")
+		region := os.Getenv("AWS_REGION")
+		return NewAwsSecretsManagerEnvLoader(secretName, region, version, logger)
+	default:
+		return NewLocalEnvLoader(version, *logger)
+	}
 }
 
 type LocalEnvLoader struct {
@@ -45,33 +57,41 @@ func NewLocalEnvLoader(version string, logger loglib.StandardLogger) *LocalEnvLo
 	return &LocalEnvLoader{}
 }
 
-type SecretsManagerEnvLoader struct {
+type AwsSecretsManagerEnvLoader struct {
 	logger  *loglib.StandardLogger
 	version string
 
 	secrets map[string]string
 }
 
-func (s *SecretsManagerEnvLoader) GetEnvVar(key string, required bool) string {
-	value, exist := s.secrets[key]
+func (a *AwsSecretsManagerEnvLoader) GetEnvVar(key string, required bool) string {
+	value, exist := a.secrets[key]
 	if !exist {
 		if required {
-			s.logger.Fatal("No environment variable " + key)
+			a.logger.Fatal("No environment variable " + key)
 		} else {
-			s.logger.Error("No environment variable " + key)
+			a.logger.Error("No environment variable " + key)
 		}
 	}
-	s.PrintEnvVar(key, value)
+	a.PrintEnvVar(key, value)
 	return value
 }
 
-func (s *SecretsManagerEnvLoader) PrintEnvVar(name string, value string) {
-	if s.version == "dev" {
-		s.logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name, "value": value})
+func (a *AwsSecretsManagerEnvLoader) PrintEnvVar(name string, value string) {
+	if a.version == "dev" {
+		a.logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name, "value": value})
 	}
 }
 
-func NewSecretsManagerEnvLoader(secretName string, region string, version string, logger *loglib.StandardLogger) *SecretsManagerEnvLoader {
+func NewAwsSecretsManagerEnvLoader(secretName string, region string, version string, logger *loglib.StandardLogger) *AwsSecretsManagerEnvLoader {
+	if secretName == "" {
+		logger.Fatal("Secret name cannot be empty")
+	}
+
+	if region == "" {
+		logger.Fatal("Region cannot be empty")
+	}
+
 	s, err := session.NewSession(&aws.Config{
 		Region: &region,
 	})
@@ -115,5 +135,5 @@ func NewSecretsManagerEnvLoader(secretName string, region string, version string
 		logger.Fatal("Secrets are nil")
 	}
 
-	return &SecretsManagerEnvLoader{secrets: secretConfigs, version: version, logger: logger}
+	return &AwsSecretsManagerEnvLoader{secrets: secretConfigs, version: version, logger: logger}
 }
