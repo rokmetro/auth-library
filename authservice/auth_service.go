@@ -42,14 +42,14 @@ func (a *AuthService) GetServiceID() string {
 // GetServiceReg returns the service registration record for the given ID if found
 func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 	a.servicesLock.RLock()
-	defer a.servicesLock.RUnlock()
+	servicesUpdated := a.servicesUpdated
+	maxRefreshFreq := a.maxRefreshCacheFreq
+	a.servicesLock.RUnlock()
 
 	var loadServicesError error
 	now := time.Now()
-	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.maxRefreshCacheFreq) {
-		a.servicesLock.RUnlock()
+	if servicesUpdated == nil || now.Sub(*servicesUpdated).Minutes() > float64(maxRefreshFreq) {
 		loadServicesError = a.LoadServices()
-		a.servicesLock.RLock()
 	}
 
 	var service ServiceReg
@@ -209,9 +209,14 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 }
 
 func (a *AuthService) CheckForRefresh() (bool, error) {
+	a.servicesLock.RLock()
+	servicesUpdated := a.servicesUpdated
+	minRefreshFreq := a.minRefreshCacheFreq
+	a.servicesLock.RUnlock()
+
 	var loadServicesError error
 	now := time.Now()
-	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.minRefreshCacheFreq) {
+	if servicesUpdated == nil || now.Sub(*servicesUpdated).Minutes() > float64(minRefreshFreq) {
 		loadServicesError = a.LoadServices()
 		return true, loadServicesError
 	}

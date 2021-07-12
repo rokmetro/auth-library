@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/rokmetro/auth-library/authservice"
@@ -47,13 +48,6 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	parsedToken, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return authServiceReg.PubKey.Key, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse token: %v", err)
-	}
-
-	if !parsedToken.Valid {
-		return nil, errors.New("token invalid")
-	}
 
 	claims, ok := parsedToken.Claims.(*Claims)
 	if !ok {
@@ -101,15 +95,21 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	}
 	kid, _ := parsedToken.Header["kid"].(string)
 	if kid != authServiceReg.PubKey.Kid {
-		refreshed, refreshErr := t.authService.CheckForRefresh()
-		if refreshErr != nil {
-			return nil, fmt.Errorf("initial token check failed, error on retry: %s", refreshErr)
+		if !parsedToken.Valid {
+			if claims.ExpiresAt < time.Now().Unix() {
+				refreshed, refreshErr := t.authService.CheckForRefresh()
+				if refreshErr != nil {
+					return nil, fmt.Errorf("initial token check returned invalid, error on retry: %v", refreshErr)
+				}
+				if refreshed {
+					return t.retryCheckToken(token, purpose)
+				} else {
+					return nil, fmt.Errorf("token invalid: %v", err)
+				}
+			}
+			return nil, fmt.Errorf("token has expired %d", claims.ExpiresAt)
 		}
-		if refreshed {
-			return t.retryCheckToken(token, purpose)
-		} else {
-			return nil, fmt.Errorf("token kid (%s) does not match %s", kid, authServiceReg.PubKey.Kid)
-		}
+		return nil, fmt.Errorf("token has valid signature but invalid kid %s", kid)
 	}
 
 	return claims, nil
