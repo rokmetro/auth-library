@@ -19,6 +19,10 @@ type EnvLoader interface {
 	// GetEnvVar returns the environment variable value with the specified key
 	// 	If required and key is not found, a fatal log will be generated. Otherwise an empty string is returned
 	GetEnvVar(key string, required bool) string
+	// GetAndLogEnvVar returns and logs the environment variable value with the specified key
+	// 	If required and key is not found, a fatal log will be generated. Otherwise an empty string is returned
+	// 	If sensitive, the value of the environment variable will not be logged
+	GetAndLogEnvVar(key string, required bool, sensitive bool) string
 }
 
 // NewEnvLoader initializes and returns the type of EnvLoader specified in the ENV_TYPE environment variable
@@ -53,7 +57,13 @@ func (l *LocalEnvLoader) GetEnvVar(key string, required bool) string {
 			l.logger.Error("No environment variable " + key)
 		}
 	}
-	printEnvVar(key, value, l.version, l.logger)
+	return value
+}
+
+// GetAndLogEnvVar implements EnvLoader
+func (l *LocalEnvLoader) GetAndLogEnvVar(key string, required bool, sensitive bool) string {
+	value := l.GetEnvVar(key, required)
+	logEnvVar(key, value, sensitive, l.version, l.logger)
 	return value
 }
 
@@ -82,7 +92,13 @@ func (a *AwsSecretsManagerEnvLoader) GetEnvVar(key string, required bool) string
 			a.logger.Error("No environment variable " + key)
 		}
 	}
-	printEnvVar(key, value, a.version, a.logger)
+	return value
+}
+
+// GetAndLogEnvVar implements EnvLoader
+func (l *AwsSecretsManagerEnvLoader) GetAndLogEnvVar(key string, required bool, sensitive bool) string {
+	value := l.GetEnvVar(key, required)
+	logEnvVar(key, value, sensitive, l.version, l.logger)
 	return value
 }
 
@@ -142,8 +158,12 @@ func NewAwsSecretsManagerEnvLoader(secretName string, region string, version str
 	return &AwsSecretsManagerEnvLoader{secrets: secretConfigs, version: version, logger: logger}
 }
 
-func printEnvVar(name string, value string, version string, logger *loglib.StandardLogger) {
+func logEnvVar(name string, value string, sensitive bool, version string, logger *loglib.StandardLogger) {
 	if version == "dev" {
-		logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name, "value": value})
+		if sensitive {
+			logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name})
+		} else {
+			logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name, "value": value})
+		}
 	}
 }
