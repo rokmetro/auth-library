@@ -369,10 +369,10 @@ type ServiceReg struct {
 
 // PubKey represents a public key object including the key and related metadata
 type PubKey struct {
-	Key    *rsa.PublicKey
-	KeyPem string `json:"key_pem" validate:"required"`
-	Alg    string `json:"alg" validate:"required"`
-	Kid    string
+	Key    *rsa.PublicKey `json:"-"`
+	KeyPem string         `json:"key_pem" validate:"required"`
+	Alg    string         `json:"alg" validate:"required"`
+	Kid    string         `json:"-"`
 }
 
 // LoadKeyFromPem parses "KeyPem" and sets the "Key" and "Kid"

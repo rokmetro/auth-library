@@ -17,6 +17,7 @@ type Claims struct {
 	jwt.StandardClaims
 	OrgID       string `json:"org_id" validate:"required"`
 	Purpose     string `json:"purpose" validate:"required"`
+	AppID       string `json:"app_id"`
 	Permissions string `json:"permissions"`
 	Scope       string `json:"scope"`
 }
