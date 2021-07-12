@@ -209,6 +209,10 @@ func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) err
 // AuthorizeRequestScope will authorize the request if the provided scopes pass the casbin enforcer
 //	Returns nil on success and error on failure.
 func (t *TokenAuth) AuthorizeRequestScope(claims *Claims, request *http.Request) error {
+	if claims == nil {
+		return errors.New("claim empty")
+	}
+	
 	if claims.Scope == "" {
 		return errors.New("scope claim empty")
 	}

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/casbin/casbin"
+	"github.com/casbin/casbin/v2"
 )
 
 var (
@@ -28,7 +28,7 @@ type CasbinAuthorization struct {
 //	Returns nil on success and error on failure.
 func (c *CasbinAuthorization) Any(values []string, object string, action string) error {
 	for _, value := range values {
-		if c.enforcer.Enforce(value, object, action) {
+		if ok, _ := c.enforcer.Enforce(value, object, action); ok {
 			return nil
 		}
 	}
@@ -40,7 +40,7 @@ func (c *CasbinAuthorization) Any(values []string, object string, action string)
 //	Returns nil on success and error on failure.
 func (c *CasbinAuthorization) All(values []string, object string, action string) error {
 	for _, value := range values {
-		if !c.enforcer.Enforce(value, object, action) {
+		if ok, _ := c.enforcer.Enforce(value, object, action); !ok {
 			return fmt.Errorf("access control error: %s is trying to apply %s operation for %s", value, action, object)
 		}
 	}
@@ -50,7 +50,10 @@ func (c *CasbinAuthorization) All(values []string, object string, action string)
 
 // NewCasbinAuthorization returns a new casbin enforcer
 func NewCasbinAuthorization(policyPath string) *CasbinAuthorization {
-	enforcer := casbin.NewEnforcer(basepath+"/authorization_model.conf", policyPath)
+	enforcer, err := casbin.NewEnforcer(basepath+"/authorization_model.conf", policyPath)
+	if err != nil {
+		fmt.Printf("NewCasbinAuthorization() -> error: %s\n", err.Error())
+	}
 
 	return &CasbinAuthorization{enforcer}
 }

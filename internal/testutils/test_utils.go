@@ -76,3 +76,14 @@ func SetupMockServiceLoader(subscribed []string, result []authservice.ServiceReg
 func SetupTestAuthService(mockServiceLoader *mocks.ServiceRegLoader) (*authservice.AuthService, error) {
 	return authservice.NewTestAuthService("test", "https://test.rokmetro.com", mockServiceLoader)
 }
+
+func SetupExampleMockLoader() *mocks.ServiceRegLoader {
+	testServiceReg := authservice.ServiceReg{ServiceID: "sample", Host: "https://sample.rokmetro.com", PubKey: nil}
+	authServiceReg := authservice.ServiceReg{ServiceID: "auth", Host: "https://auth.rokmetro.com", PubKey: GetSamplePubKey()}
+	serviceRegsValid := []authservice.ServiceReg{authServiceReg, testServiceReg}
+
+	mockLoader := mocks.NewServiceRegLoader(nil)
+	mockLoader.On("LoadServices").Return(serviceRegsValid, nil)
+
+	return mockLoader
+}

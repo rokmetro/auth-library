@@ -4,7 +4,8 @@ go 1.16
 
 require (
 	github.com/casbin/casbin v1.9.1
-	github.com/casbin/casbin/v2 v2.31.10 // indirect
+	// github.com/casbin/casbin v1.9.1
+	github.com/casbin/casbin/v2 v2.31.10
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/go-playground/universal-translator v0.17.0 // indirect

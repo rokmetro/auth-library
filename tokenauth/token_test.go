@@ -3,6 +3,7 @@ package tokenauth_test
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -19,8 +20,8 @@ func setupTestTokenAuth(acceptRokwire bool, mockLoader *mocks.ServiceRegLoader) 
 	if err != nil {
 		return nil, fmt.Errorf("error setting up test auth service: %v", err)
 	}
-	permissionAuth := authorization.NewCasbinAuthorization("./permissions_authorization_policy.csv")
-	scopeAuth := authorization.NewCasbinAuthorization("./scope_authorization_policy.csv")
+	permissionAuth := authorization.NewCasbinAuthorization("./test_permissions_authorization_policy.csv")
+	scopeAuth := authorization.NewCasbinAuthorization("./test_scope_authorization_policy.csv")
 	return tokenauth.NewTokenAuth(acceptRokwire, auth, permissionAuth, scopeAuth)
 }
 
@@ -215,6 +216,70 @@ func TestGetRequestTokens(t *testing.T) {
 			}
 			if got1 != tt.want1 {
 				t.Errorf("GetRequestTokens() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func TestTokenAuth_AuthorizeRequestPermissions(t *testing.T) {
+	path := "https://test.rokmetro.com"
+	type args struct {
+		claims  *tokenauth.Claims
+		request *http.Request
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+		{"test", args{nil, httptest.NewRequest(http.MethodGet, path, nil)}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr, err := setupTestTokenAuth(true, nil)
+			if err != nil || tr == nil {
+				t.Errorf("Error initializing test token auth: %v", err)
+				return
+			}
+
+			if err := tr.AuthorizeRequestPermissions(tt.args.claims, tt.args.request); (err != nil) != tt.wantErr {
+				t.Errorf("TokenAuth.AuthorizeRequestPermissions() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestTokenAuth_AuthorizeRequestScope(t *testing.T) {
+	testServiceReg := authservice.ServiceReg{ServiceID: "test", Host: "https://test.rokmetro.com", PubKey: nil}
+	authServiceReg := authservice.ServiceReg{ServiceID: "auth", Host: "https://auth.rokmetro.com", PubKey: testutils.GetSamplePubKey()}
+	serviceRegsValid := []authservice.ServiceReg{authServiceReg, testServiceReg}
+	subscribed := []string{"auth"}
+
+	path := "https://test.rokmetro.com"
+	type args struct {
+		claims  *tokenauth.Claims
+		request *http.Request
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+		{"test", args{nil, httptest.NewRequest(http.MethodGet, path, nil)}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLoader := testutils.SetupMockServiceLoader(subscribed, serviceRegsValid, nil)
+			tr, err := setupTestTokenAuth(true, mockLoader)
+			if err != nil || tr == nil {
+				t.Errorf("Error initializing test token auth: %v", err)
+				return
+			}
+
+			if err := tr.AuthorizeRequestScope(tt.args.claims, tt.args.request); (err != nil) != tt.wantErr {
+				t.Errorf("TokenAuth.AuthorizeRequestScope() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
