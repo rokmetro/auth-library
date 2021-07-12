@@ -8,7 +8,7 @@ import (
 
 var (
 	permissionAuth = NewCasbinAuthorization("./test_permissions_authorization_policy.csv")
-	scopeAuth = NewCasbinAuthorization("./test_scope_authorization_policy.csv")
+	scopeAuth      = NewCasbinAuthorization("./test_scope_authorization_policy.csv")
 )
 
 func TestCasbinAuthorization_Any(t *testing.T) {

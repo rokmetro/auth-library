@@ -3,7 +3,7 @@ package testutils
 import (
 	"crypto/rsa"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"github.com/rokmetro/auth-library/authservice"
 	"github.com/rokmetro/auth-library/authservice/mocks"
 )
@@ -29,6 +29,10 @@ func GetSamplePubKey() *authservice.PubKey {
 	key.LoadKeyFromPem()
 
 	return &key
+}
+
+func GetSamplePubKeyFingerprint() string {
+	return "SHA256:I3HxcO3FpUM6MG7+rCASuePfl92JEcdz2htV7SP0Y20="
 }
 
 func GetSamplePrivKeyPem() string {

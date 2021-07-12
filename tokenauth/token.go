@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"github.com/rokmetro/auth-library/authorization"
 	"github.com/rokmetro/auth-library/authservice"
 	"github.com/rokmetro/auth-library/authutils"
@@ -86,11 +86,15 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	// Check token headers
 	alg, _ := parsedToken.Header["alg"].(string)
 	if alg != authServiceReg.PubKey.Alg {
-		return nil, fmt.Errorf("token alg (%v) does not match %s", alg, authServiceReg.PubKey.Alg)
+		return nil, fmt.Errorf("token alg (%s) does not match %s", alg, authServiceReg.PubKey.Alg)
 	}
 	typ, _ := parsedToken.Header["typ"].(string)
 	if typ != "JWT" {
-		return nil, fmt.Errorf("token typ (%v) does not match JWT", typ)
+		return nil, fmt.Errorf("token typ (%s) does not match JWT", typ)
+	}
+	kid, _ := parsedToken.Header["kid"].(string)
+	if kid != authServiceReg.PubKey.Kid {
+		return nil, fmt.Errorf("token kid (%s) does not match %s", kid, authServiceReg.PubKey.Kid)
 	}
 
 	return claims, nil
@@ -166,9 +170,14 @@ func (t *TokenAuth) ValidatePermissionsClaim(claims *Claims, requiredPermissions
 
 // AuthorizeRequestPermissions will validate that the provided token claims have access to the requested object
 func (t *TokenAuth) AuthorizeRequestPermissions(claims *Claims, request *http.Request) error {
+	if claims == nil {
+		return errors.New("claim empty")
+	}
+
 	permissions := strings.Split(claims.Permissions, ",")
 	object := request.URL.Path
 	action := request.Method
+
 	return t.permissionAuth.Any(permissions, object, action)
 }
 
@@ -212,7 +221,7 @@ func (t *TokenAuth) AuthorizeRequestScope(claims *Claims, request *http.Request)
 	if claims == nil {
 		return errors.New("claim empty")
 	}
-	
+
 	if claims.Scope == "" {
 		return errors.New("scope claim empty")
 	}
@@ -232,6 +241,7 @@ func (t *TokenAuth) AuthorizeRequestScope(claims *Claims, request *http.Request)
 
 	object := request.URL.Path
 	action := request.Method
+
 	return t.scopeAuth.Any(scopes, object, action)
 }
 

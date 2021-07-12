@@ -1,9 +1,10 @@
 package authutils
 
 import (
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
-	"encoding/pem"
 	"errors"
 	"fmt"
 )
@@ -29,19 +30,19 @@ func RemoveString(slice []string, val string) ([]string, bool) {
 	return slice, false
 }
 
-// GetKeyFingerprint returns the fingerprint for a given PEM encoded key
-func GetKeyFingerprint(keyPem string) (string, error) {
-	key, rest := pem.Decode([]byte(keyPem))
-	if len(rest) != 0 || key == nil || len(key.Bytes) == 0 {
-		return "", errors.New("failed to decode key with pem")
+// GetKeyFingerprint returns the fingerprint for a given rsa.PublicKey
+func GetKeyFingerprint(key *rsa.PublicKey) (string, error) {
+	if key == nil {
+		return "", errors.New("key cannot be nil")
 	}
+	pubPkcs1 := x509.MarshalPKCS1PublicKey(key)
 
-	hash, err := HashSha256(key.Bytes)
+	hash, err := HashSha256(pubPkcs1)
 	if err != nil {
 		return "", fmt.Errorf("error hashing key: %v", err)
 	}
 
-	return base64.StdEncoding.EncodeToString(hash), nil
+	return "SHA256:" + base64.StdEncoding.EncodeToString(hash), nil
 }
 
 // HashSha256 returns the SHA256 hash of the input
