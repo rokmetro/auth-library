@@ -12,11 +12,17 @@ import (
 	"github.com/rokmetro/logging-library/loglib"
 )
 
+// -------------------- EnvLoader --------------------
+
+// EnvLoader is an interface to assist with environment variable loading
 type EnvLoader interface {
+	// GetEnvVar returns the environment variable value with the specified key
+	// 	If required and key is not found, a fatal log will be generated. Otherwise an empty string is returned
 	GetEnvVar(key string, required bool) string
-	PrintEnvVar(name string, value string)
 }
 
+// NewEnvLoader initializes and returns the type of EnvLoader specified in the ENV_TYPE environment variable
+//	The default EnvLoader is a LocalEnvLoader
 func NewEnvLoader(version string, logger *loglib.StandardLogger) EnvLoader {
 	env := os.Getenv("ENV_TYPE")
 	switch env {
@@ -25,15 +31,19 @@ func NewEnvLoader(version string, logger *loglib.StandardLogger) EnvLoader {
 		region := os.Getenv("AWS_REGION")
 		return NewAwsSecretsManagerEnvLoader(secretName, region, version, logger)
 	default:
-		return NewLocalEnvLoader(version, *logger)
+		return NewLocalEnvLoader(version, logger)
 	}
 }
 
+// -------------------- LocalEnvLoader --------------------
+
+// LocalEnvLoader is an EnvLoader implementation which loads variables from the local system environment
 type LocalEnvLoader struct {
 	logger  *loglib.StandardLogger
 	version string
 }
 
+// GetEnvVar implements EnvLoader
 func (l *LocalEnvLoader) GetEnvVar(key string, required bool) string {
 	value, exist := os.LookupEnv(key)
 	if !exist {
@@ -43,20 +53,18 @@ func (l *LocalEnvLoader) GetEnvVar(key string, required bool) string {
 			l.logger.Error("No environment variable " + key)
 		}
 	}
-	l.PrintEnvVar(key, value)
+	printEnvVar(key, value, l.version, l.logger)
 	return value
 }
 
-func (l *LocalEnvLoader) PrintEnvVar(name string, value string) {
-	if l.version == "dev" {
-		l.logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name, "value": value})
-	}
+// NewLocalEnvLoader instantiates a new LocalEnvLoader instance
+func NewLocalEnvLoader(version string, logger *loglib.StandardLogger) *LocalEnvLoader {
+	return &LocalEnvLoader{version: version, logger: logger}
 }
 
-func NewLocalEnvLoader(version string, logger loglib.StandardLogger) *LocalEnvLoader {
-	return &LocalEnvLoader{}
-}
+// -------------------- AwsSecretsManagerEnvLoader --------------------
 
+// AwsSecretsManagerEnvLoader is an EnvLoader implementation which loads variables from an AWS SecretsManager secret
 type AwsSecretsManagerEnvLoader struct {
 	logger  *loglib.StandardLogger
 	version string
@@ -64,6 +72,7 @@ type AwsSecretsManagerEnvLoader struct {
 	secrets map[string]string
 }
 
+// GetEnvVar implements EnvLoader
 func (a *AwsSecretsManagerEnvLoader) GetEnvVar(key string, required bool) string {
 	value, exist := a.secrets[key]
 	if !exist {
@@ -73,16 +82,11 @@ func (a *AwsSecretsManagerEnvLoader) GetEnvVar(key string, required bool) string
 			a.logger.Error("No environment variable " + key)
 		}
 	}
-	a.PrintEnvVar(key, value)
+	printEnvVar(key, value, a.version, a.logger)
 	return value
 }
 
-func (a *AwsSecretsManagerEnvLoader) PrintEnvVar(name string, value string) {
-	if a.version == "dev" {
-		a.logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name, "value": value})
-	}
-}
-
+// NewLocalEnvLoader instantiates a new AwsSecretsManagerEnvLoader instance
 func NewAwsSecretsManagerEnvLoader(secretName string, region string, version string, logger *loglib.StandardLogger) *AwsSecretsManagerEnvLoader {
 	if secretName == "" {
 		logger.Fatal("Secret name cannot be empty")
@@ -136,4 +140,10 @@ func NewAwsSecretsManagerEnvLoader(secretName string, region string, version str
 	}
 
 	return &AwsSecretsManagerEnvLoader{secrets: secretConfigs, version: version, logger: logger}
+}
+
+func printEnvVar(name string, value string, version string, logger *loglib.StandardLogger) {
+	if version == "dev" {
+		logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name, "value": value})
+	}
 }
