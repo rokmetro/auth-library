@@ -96,7 +96,7 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	kid, _ := parsedToken.Header["kid"].(string)
 	if kid != authServiceReg.PubKey.Kid {
 		if !parsedToken.Valid {
-			if claims.ExpiresAt < time.Now().Unix() {
+			if claims.ExpiresAt > time.Now().Unix() {
 				refreshed, refreshErr := t.authService.CheckForRefresh()
 				if refreshErr != nil {
 					return nil, fmt.Errorf("initial token check returned invalid, error on retry: %v", refreshErr)
