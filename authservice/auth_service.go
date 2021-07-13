@@ -79,7 +79,7 @@ func (a *AuthService) LoadServices() error {
 }
 
 // SubscribeService subscribes to the provided services
-//	If reload is true and ont of the services is not already subscribed, the service registrations will be reloaded immediately
+//	If reload is true and one of the services is not already subscribed, the service registrations will be reloaded immediately
 func (a *AuthService) SubscribeServices(serviceIDs []string, reload bool) error {
 	newSub := false
 
