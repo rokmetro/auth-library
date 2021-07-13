@@ -48,6 +48,9 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	parsedToken, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return authServiceReg.PubKey.Key, nil
 	})
+	if parsedToken == nil {
+		return nil, errors.New("failed to parse token")
+	}
 
 	claims, ok := parsedToken.Claims.(*Claims)
 	if !ok {
