@@ -360,19 +360,19 @@ func NewServiceRegSubscriptions(subscribedServices []string) *ServiceRegSubscrip
 
 // ServiceReg represents a service registration record
 type ServiceReg struct {
-	ServiceID string  `json:"service_id" validate:"required"`
-	Host      string  `json:"host" validate:"required"`
-	PubKey    *PubKey `json:"pub_key"`
+	ServiceID string  `json:"service_id" bson:"service_id" validate:"required"`
+	Host      string  `json:"host" bson:"host" validate:"required"`
+	PubKey    *PubKey `json:"pub_key" bson:"pub_key"`
 }
 
 // -------------------- PubKey --------------------
 
 // PubKey represents a public key object including the key and related metadata
 type PubKey struct {
-	Key    *rsa.PublicKey `json:"-"`
-	KeyPem string         `json:"key_pem" validate:"required"`
-	Alg    string         `json:"alg" validate:"required"`
-	Kid    string         `json:"-"`
+	Key    *rsa.PublicKey `json:"-" bson:"-"`
+	KeyPem string         `json:"key_pem" bson:"key_pem" validate:"required"`
+	Alg    string         `json:"alg" bson:"alg" validate:"required"`
+	Kid    string         `json:"-" bson:"-"`
 }
 
 // LoadKeyFromPem parses "KeyPem" and sets the "Key" and "Kid"
