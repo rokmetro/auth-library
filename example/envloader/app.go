@@ -17,7 +17,7 @@ func main() {
 		Version = "dev"
 	}
 
-	logger := loglib.NewLogger("sample")
+	logger := loglib.NewLogger("sample", nil)
 	envLoader := envloader.NewEnvLoader(Version, logger)
 
 	envVar := envLoader.GetEnvVar("SAMPLE_ENV_VAR", false)
