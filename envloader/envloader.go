@@ -115,7 +115,7 @@ func NewAwsSecretsManagerEnvLoader(secretName string, region string, version str
 		Region: &region,
 	})
 	if err != nil {
-		logger.Fatalf("Error creating AWS session - Region: %s, Error: %v", secretName, region, err)
+		logger.Fatalf("Error creating AWS session - SecretName: %s, Region: %s, Error: %v", secretName, region, err)
 	}
 
 	svc := secretsmanager.New(s)

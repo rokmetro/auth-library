@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,15 +112,19 @@ func TestTokenAuth_CheckToken(t *testing.T) {
 		acceptRokwire bool
 		want          *tokenauth.Claims
 		wantErr       bool
+		errSubstring  string
 	}{
-		{"return claims on valid rokwire token", args{validToken, "access"}, true, validClaims, false},
-		{"return claims on valid aud token", args{validAudToken, "access"}, false, validAudClaims, false},
-		{"return error on invalid token", args{"token", "access"}, true, nil, true},
-		{"return error on expired token", args{expiredToken, "access"}, true, nil, true},
-		{"return error on wrong issuer", args{invalidIssToken, "access"}, true, nil, true},
-		{"return error on wrong aud", args{invalidAudToken, "access"}, true, nil, true},
-		{"return error on wrong purpose", args{validToken, "csrf"}, true, nil, true},
-		{"return error on unpermitted rokwire token", args{validToken, "access"}, false, nil, true},
+		{"return claims on valid rokwire token", args{validToken, "access"}, true, validClaims, false, ""},
+		{"return claims on valid aud token", args{validAudToken, "access"}, false, validAudClaims, false, ""},
+		{"return error on invalid token", args{"token", "access"}, true, nil, true, "failed to parse token"},
+		{"return error on expired token", args{expiredToken, "access"}, true, nil, true, "token is expired"},
+		{"return error on wrong issuer", args{invalidIssToken, "access"}, true, nil, true, ""},
+		{"return error on wrong aud", args{invalidAudToken, "access"}, true, nil, true, ""},
+		{"return error on wrong purpose", args{validToken, "csrf"}, true, nil, true, ""},
+		{"return error on unpermitted rokwire token", args{validToken, "access"}, false, nil, true, ""},
+		//TODO: Fille <invalid retry token> and <valid token after refresh>
+		// {"return error on retry invalid token", args{"<invalid retry token>", "access"}, true, nil, true, "initial token check returned invalid, error on retry"},
+		// {"return claims after refresh", args{"<valid token after refresh>", "access"}, true, &tokenauth.Claims{}, false, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -132,6 +137,10 @@ func TestTokenAuth_CheckToken(t *testing.T) {
 			got, err := tr.CheckToken(tt.args.token, tt.args.purpose)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("TokenAuth.CheckToken() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), tt.errSubstring) {
+				t.Errorf("TokenAuth.CheckToken() error = %v, errSubstring %s", err, tt.errSubstring)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
