@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 )
@@ -43,6 +44,22 @@ func GetKeyFingerprint(key *rsa.PublicKey) (string, error) {
 	}
 
 	return "SHA256:" + base64.StdEncoding.EncodeToString(hash), nil
+}
+
+// GetPubKeyPem returns the PEM encoded public key
+func GetPubKeyPem(key *rsa.PublicKey) (string, error) {
+	if key == nil {
+		return "", errors.New("key cannot be nil")
+	}
+
+	pemdata := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "RSA PUBLIC KEY",
+			Bytes: x509.MarshalPKCS1PublicKey(key),
+		},
+	)
+
+	return string(pemdata), nil
 }
 
 // HashSha256 returns the SHA256 hash of the input

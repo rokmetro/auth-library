@@ -26,10 +26,12 @@ type AuthService struct {
 	// ID of implementing service
 	serviceID string
 
-	services         *syncmap.Map
-	servicesUpdated  *time.Time
-	servicesLock     *sync.RWMutex
-	refreshCacheFreq int
+	services        *syncmap.Map
+	servicesUpdated *time.Time
+	servicesLock    *sync.RWMutex
+
+	minRefreshCacheFreq int
+	maxRefreshCacheFreq int
 }
 
 // GetServiceID returns the ID of the implementing service
@@ -40,14 +42,14 @@ func (a *AuthService) GetServiceID() string {
 // GetServiceReg returns the service registration record for the given ID if found
 func (a *AuthService) GetServiceReg(serviceID string) (*ServiceReg, error) {
 	a.servicesLock.RLock()
-	defer a.servicesLock.RUnlock()
+	servicesUpdated := a.servicesUpdated
+	maxRefreshFreq := a.maxRefreshCacheFreq
+	a.servicesLock.RUnlock()
 
 	var loadServicesError error
 	now := time.Now()
-	if a.servicesUpdated == nil || now.Sub(*a.servicesUpdated).Minutes() > float64(a.refreshCacheFreq) {
-		a.servicesLock.RUnlock()
+	if servicesUpdated == nil || now.Sub(*servicesUpdated).Minutes() > float64(maxRefreshFreq) {
 		loadServicesError = a.LoadServices()
-		a.servicesLock.RLock()
 	}
 
 	var service ServiceReg
@@ -150,11 +152,19 @@ func (a *AuthService) ValidateServiceRegistrationKey(privKey *rsa.PrivateKey) er
 	return nil
 }
 
-// SetRefreshCacheFreq sets the frequency at which cached service registration records are refreshed in minutes
-// 	The default value is 60
-func (a *AuthService) SetRefreshCacheFreq(freq int) {
+// SetMinRefreshCacheFreq sets the minimum frequency at which cached service registration records are refreshed in minutes
+// 	The default value is 1
+func (a *AuthService) SetMinRefreshCacheFreq(freq int) {
 	a.servicesLock.Lock()
-	a.refreshCacheFreq = freq
+	a.minRefreshCacheFreq = freq
+	a.servicesLock.Unlock()
+}
+
+// SetMaxRefreshCacheFreq sets the minimum frequency at which cached service registration records are refreshed in minutes
+// 	The default value is 60
+func (a *AuthService) SetMaxRefreshCacheFreq(freq int) {
+	a.servicesLock.Lock()
+	a.maxRefreshCacheFreq = freq
 	a.servicesLock.Unlock()
 }
 
@@ -182,7 +192,9 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	lock := &sync.RWMutex{}
 	services := &syncmap.Map{}
 
-	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock, refreshCacheFreq: 60}
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock,
+		minRefreshCacheFreq: 1, maxRefreshCacheFreq: 60}
+
 	err := auth.LoadServices()
 	if err != nil {
 		return nil, fmt.Errorf("error loading services: %v", err)
@@ -196,6 +208,21 @@ func NewAuthService(serviceID string, serviceHost string, serviceLoader ServiceR
 	return auth, nil
 }
 
+func (a *AuthService) CheckForRefresh() (bool, error) {
+	a.servicesLock.RLock()
+	servicesUpdated := a.servicesUpdated
+	minRefreshFreq := a.minRefreshCacheFreq
+	a.servicesLock.RUnlock()
+
+	var loadServicesError error
+	now := time.Now()
+	if servicesUpdated == nil || now.Sub(*servicesUpdated).Minutes() > float64(minRefreshFreq) {
+		loadServicesError = a.LoadServices()
+		return true, loadServicesError
+	}
+	return false, loadServicesError
+}
+
 // NewTestAuthService creates and configures a new AuthService instance for testing purposes
 func NewTestAuthService(serviceID string, serviceHost string, serviceLoader ServiceRegLoader) (*AuthService, error) {
 	// Subscribe to the implementing service to validate registration
@@ -204,7 +231,8 @@ func NewTestAuthService(serviceID string, serviceHost string, serviceLoader Serv
 	lock := &sync.RWMutex{}
 	services := &syncmap.Map{}
 
-	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock, refreshCacheFreq: 60}
+	auth := &AuthService{serviceLoader: serviceLoader, serviceID: serviceID, services: services, servicesLock: lock,
+		minRefreshCacheFreq: 1, maxRefreshCacheFreq: 60}
 	err := auth.LoadServices()
 	if err != nil {
 		return nil, fmt.Errorf("error loading services: %v", err)
@@ -231,7 +259,7 @@ type ServiceRegLoader interface {
 
 //RemoteServiceRegLoaderImpl provides a ServiceRegLoader implemntation for a remote auth service
 type RemoteServiceRegLoaderImpl struct {
-	authHost string // Remote host of the auth service
+	authServicesUrl string // URL of auth services endpoint
 	*ServiceRegSubscriptions
 }
 
@@ -241,10 +269,8 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 		return nil, nil
 	}
 
-	url := fmt.Sprintf("%s/services", r.authHost)
-
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", r.authServicesUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error formatting request to load services: %v", err)
 	}
@@ -299,10 +325,10 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 	return services, err
 }
 
-// NewRemoteServiceRegLoader creates and configures a new RemoteServiceRegLoaderImpl instance for the provided auth service host
-func NewRemoteServiceRegLoader(authHost string, subscribedServices []string) *RemoteServiceRegLoaderImpl {
+// NewRemoteServiceRegLoader creates and configures a new RemoteServiceRegLoaderImpl instance for the provided auth services url
+func NewRemoteServiceRegLoader(authServicesUrl string, subscribedServices []string) *RemoteServiceRegLoaderImpl {
 	subscriptions := NewServiceRegSubscriptions(subscribedServices)
-	return &RemoteServiceRegLoaderImpl{authHost: authHost, ServiceRegSubscriptions: subscriptions}
+	return &RemoteServiceRegLoaderImpl{authServicesUrl: authServicesUrl, ServiceRegSubscriptions: subscriptions}
 }
 
 // -------------------- ServiceRegSubscriptions --------------------
@@ -360,19 +386,19 @@ func NewServiceRegSubscriptions(subscribedServices []string) *ServiceRegSubscrip
 
 // ServiceReg represents a service registration record
 type ServiceReg struct {
-	ServiceID string  `json:"service" validate:"required"`
-	Host      string  `json:"host" validate:"required"`
-	PubKey    *PubKey `json:"pub_key"`
+	ServiceID string  `json:"service_id" bson:"service_id" validate:"required"`
+	Host      string  `json:"host" bson:"host" validate:"required"`
+	PubKey    *PubKey `json:"pub_key" bson:"pub_key"`
 }
 
 // -------------------- PubKey --------------------
 
 // PubKey represents a public key object including the key and related metadata
 type PubKey struct {
-	Key    *rsa.PublicKey
-	KeyPem string `json:"key_pem" validate:"required"`
-	Alg    string `json:"alg" validate:"required"`
-	Kid    string
+	Key    *rsa.PublicKey `json:"-" bson:"-"`
+	KeyPem string         `json:"key_pem" bson:"key_pem" validate:"required"`
+	Alg    string         `json:"alg" bson:"alg" validate:"required"`
+	Kid    string         `json:"-" bson:"-"`
 }
 
 // LoadKeyFromPem parses "KeyPem" and sets the "Key" and "Kid"

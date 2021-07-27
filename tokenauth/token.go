@@ -5,11 +5,18 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/rokmetro/auth-library/authorization"
 	"github.com/rokmetro/auth-library/authservice"
 	"github.com/rokmetro/auth-library/authutils"
+)
+
+const (
+	AudRokwire string = "rokwire"
+	ScopeAll   string = "all"
 )
 
 // Claims represents the standard claims included in access tokens
@@ -18,6 +25,7 @@ type Claims struct {
 	jwt.StandardClaims
 	OrgID       string `json:"org_id" validate:"required"`
 	Purpose     string `json:"purpose" validate:"required"`
+	AppID       string `json:"app_id"`
 	Permissions string `json:"permissions"`
 	Scope       string `json:"scope"`
 }
@@ -26,26 +34,32 @@ type Claims struct {
 type TokenAuth struct {
 	authService         *authservice.AuthService
 	acceptRokwireTokens bool
-	permissionAuth      authorization.Authorization
-	scopeAuth           authorization.Authorization
+
+	permissionAuth authorization.Authorization
+	scopeAuth      authorization.Authorization
+
+	blacklist     []string
+	blacklistLock *sync.RWMutex
+	blacklistSize int
 }
 
 // CheckToken validates the provided token and returns the token claims
 func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
+	for i := len(t.blacklist) - 1; i >= 0; i-- {
+		if token == t.blacklist[i] {
+			return nil, fmt.Errorf("known invalid token")
+		}
+	}
 	authServiceReg, err := t.authService.GetServiceReg("auth")
 	if err != nil || authServiceReg == nil || authServiceReg.PubKey == nil || authServiceReg.PubKey.Key == nil {
 		return nil, fmt.Errorf("failed to retrieve auth service pub key: %v", err)
 	}
 
-	parsedToken, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	parsedToken, tokenErr := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return authServiceReg.PubKey.Key, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse token: %v", err)
-	}
-
-	if !parsedToken.Valid {
-		return nil, errors.New("token invalid")
+	if parsedToken == nil {
+		return nil, errors.New("failed to parse token")
 	}
 
 	claims, ok := parsedToken.Claims.(*Claims)
@@ -74,10 +88,10 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	}
 
 	aud := strings.Split(claims.Audience, ",")
-	if !(authutils.ContainsString(aud, t.authService.GetServiceID()) || (t.acceptRokwireTokens && authutils.ContainsString(aud, "rokwire"))) {
+	if !(authutils.ContainsString(aud, t.authService.GetServiceID()) || (t.acceptRokwireTokens && authutils.ContainsString(aud, AudRokwire))) {
 		acceptAuds := t.authService.GetServiceID()
 		if t.acceptRokwireTokens {
-			acceptAuds += " or rokwire"
+			acceptAuds += " or " + AudRokwire
 		}
 
 		return nil, fmt.Errorf("token aud (%s) does not match %s", claims.Audience, acceptAuds)
@@ -94,10 +108,41 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	}
 	kid, _ := parsedToken.Header["kid"].(string)
 	if kid != authServiceReg.PubKey.Kid {
-		return nil, fmt.Errorf("token kid (%s) does not match %s", kid, authServiceReg.PubKey.Kid)
+		if !parsedToken.Valid {
+			if claims.ExpiresAt > time.Now().Unix() {
+				refreshed, refreshErr := t.authService.CheckForRefresh()
+				if refreshErr != nil {
+					return nil, fmt.Errorf("initial token check returned invalid, error on retry: %v", refreshErr)
+				}
+				if refreshed {
+					return t.retryCheckToken(token, purpose)
+				} else {
+					return nil, fmt.Errorf("token invalid: %v", tokenErr)
+				}
+			}
+			return nil, fmt.Errorf("token is expired %d", claims.ExpiresAt)
+		}
+		return nil, fmt.Errorf("token has valid signature but invalid kid %s", kid)
+	}
+
+	if !parsedToken.Valid {
+		return nil, fmt.Errorf("token invalid: %v", tokenErr)
 	}
 
 	return claims, nil
+}
+
+func (t *TokenAuth) retryCheckToken(token string, purpose string) (*Claims, error) {
+	retryClaims, retryErr := t.CheckToken(token, purpose)
+	if retryErr != nil {
+		t.blacklistLock.Lock()
+		if len(t.blacklist) >= t.blacklistSize {
+			t.blacklist = t.blacklist[1:]
+		}
+		t.blacklist = append(t.blacklist, token)
+		t.blacklistLock.Unlock()
+	}
+	return retryClaims, retryErr
 }
 
 // CheckRequestTokens is a convenience function which retrieves and checks any tokens included in a request
@@ -190,14 +235,14 @@ func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) err
 	}
 
 	// Grant access for global scope
-	if claims.Scope == "all" {
+	if claims.Scope == ScopeAll {
 		return nil
 	}
 
 	scopes := strings.Split(claims.Scope, " ")
 
 	// Grant access if claims contain service-level global scope
-	serviceAll := t.authService.GetServiceID() + ":all"
+	serviceAll := t.authService.GetServiceID() + ":" + ScopeAll
 	if authutils.ContainsString(scopes, serviceAll) {
 		return nil
 	}
@@ -245,11 +290,23 @@ func (t *TokenAuth) AuthorizeRequestScope(claims *Claims, request *http.Request)
 	return t.scopeAuth.Any(scopes, object, action)
 }
 
+// SetBlacklistSize sets the maximum size of the token blacklist queue
+// 	The default value is 1024
+func (t *TokenAuth) SetBlacklistSize(size int) {
+	t.blacklistLock.Lock()
+	t.blacklistSize = size
+	t.blacklistLock.Unlock()
+}
+
 // NewTokenAuth creates and configures a new TokenAuth instance
 // authorization maybe nil if performing manual authorization
 func NewTokenAuth(acceptRokwireTokens bool, authService *authservice.AuthService, permissionAuth authorization.Authorization, scopeAuth authorization.Authorization) (*TokenAuth, error) {
 	authService.SubscribeServices([]string{"auth"}, true)
-	return &TokenAuth{acceptRokwireTokens: acceptRokwireTokens, authService: authService, permissionAuth: permissionAuth, scopeAuth: scopeAuth}, nil
+
+	blLock := &sync.RWMutex{}
+	bl := []string{}
+
+	return &TokenAuth{acceptRokwireTokens: acceptRokwireTokens, authService: authService, permissionAuth: permissionAuth, scopeAuth: scopeAuth, blacklistLock: blLock, blacklist: bl, blacklistSize: 1024}, nil
 }
 
 // -------------------------- Helper Functions --------------------------
