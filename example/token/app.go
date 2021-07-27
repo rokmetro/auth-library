@@ -16,11 +16,8 @@ type WebAdapter struct {
 }
 
 func (we WebAdapter) Start() {
-	// Empty permissions indicates that no permissions are required
 	http.HandleFunc("/test", we.tokenAuthWrapFunc(we.test))
-
-	// Multiple permissions indicates that the requestor must have one of the provided permissions
-	http.HandleFunc("/admin/test", we.tokenAuthWrapFunc(we.adminTest))
+	http.HandleFunc("/admin/test", we.adminTokenWrapFunc(we.adminTest))
 
 	http.ListenAndServe(":5000", nil)
 }
