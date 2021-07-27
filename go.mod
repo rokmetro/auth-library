@@ -4,8 +4,9 @@ go 1.16
 
 require (
 	github.com/aws/aws-sdk-go v1.39.4
+	github.com/casbin/casbin/v2 v2.31.10
 	github.com/go-playground/universal-translator v0.17.0 // indirect
-	github.com/golang-jwt/jwt v3.2.1+incompatible // indirect
+	github.com/golang-jwt/jwt v3.2.1+incompatible
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/rokmetro/logging-library v0.1.15

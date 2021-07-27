@@ -12,10 +12,12 @@ import (
 	"github.com/rokmetro/auth-library/sigauth"
 )
 
+// WebAdapter is the web adapter for signature auth
 type WebAdapter struct {
 	signatureAuth *sigauth.SignatureAuth
 }
 
+// Start starts the web adapter for signature auth
 func (we WebAdapter) Start() {
 	// Empty service IDs indicates that all subscribed services may access this resource
 	http.HandleFunc("/test", we.signatureAuthWrapFunction(we.testHandler, []string{}))
