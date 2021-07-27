@@ -51,7 +51,7 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 		return nil, fmt.Errorf("failed to retrieve auth service pub key: %v", err)
 	}
 
-	parsedToken, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	parsedToken, tokenErr := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return authServiceReg.PubKey.Key, nil
 	})
 	if parsedToken == nil {
@@ -113,12 +113,16 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 				if refreshed {
 					return t.retryCheckToken(token, purpose)
 				} else {
-					return nil, fmt.Errorf("token invalid: %v", err)
+					return nil, fmt.Errorf("token invalid: %v", tokenErr)
 				}
 			}
-			return nil, fmt.Errorf("token has expired %d", claims.ExpiresAt)
+			return nil, fmt.Errorf("token is expired %d", claims.ExpiresAt)
 		}
 		return nil, fmt.Errorf("token has valid signature but invalid kid %s", kid)
+	}
+
+	if !parsedToken.Valid {
+		return nil, fmt.Errorf("token invalid: %v", tokenErr)
 	}
 
 	return claims, nil
