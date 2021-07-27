@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"github.com/rokmetro/auth-library/authutils"
 	"golang.org/x/sync/syncmap"
 	"gopkg.in/go-playground/validator.v9"
@@ -81,7 +81,7 @@ func (a *AuthService) LoadServices() error {
 }
 
 // SubscribeService subscribes to the provided services
-//	If reload is true and ont of the services is not already subscribed, the service registrations will be reloaded immediately
+//	If reload is true and one of the services is not already subscribed, the service registrations will be reloaded immediately
 func (a *AuthService) SubscribeServices(serviceIDs []string, reload bool) error {
 	newSub := false
 
@@ -259,7 +259,7 @@ type ServiceRegLoader interface {
 
 //RemoteServiceRegLoaderImpl provides a ServiceRegLoader implemntation for a remote auth service
 type RemoteServiceRegLoaderImpl struct {
-	authHost string // Remote host of the auth service
+	authServicesUrl string // URL of auth services endpoint
 	*ServiceRegSubscriptions
 }
 
@@ -269,10 +269,8 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 		return nil, nil
 	}
 
-	url := fmt.Sprintf("%s/services", r.authHost)
-
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", r.authServicesUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error formatting request to load services: %v", err)
 	}
@@ -327,10 +325,10 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 	return services, err
 }
 
-// NewRemoteServiceRegLoader creates and configures a new RemoteServiceRegLoaderImpl instance for the provided auth service host
-func NewRemoteServiceRegLoader(authHost string, subscribedServices []string) *RemoteServiceRegLoaderImpl {
+// NewRemoteServiceRegLoader creates and configures a new RemoteServiceRegLoaderImpl instance for the provided auth services url
+func NewRemoteServiceRegLoader(authServicesUrl string, subscribedServices []string) *RemoteServiceRegLoaderImpl {
 	subscriptions := NewServiceRegSubscriptions(subscribedServices)
-	return &RemoteServiceRegLoaderImpl{authHost: authHost, ServiceRegSubscriptions: subscriptions}
+	return &RemoteServiceRegLoaderImpl{authServicesUrl: authServicesUrl, ServiceRegSubscriptions: subscriptions}
 }
 
 // -------------------- ServiceRegSubscriptions --------------------
@@ -388,19 +386,19 @@ func NewServiceRegSubscriptions(subscribedServices []string) *ServiceRegSubscrip
 
 // ServiceReg represents a service registration record
 type ServiceReg struct {
-	ServiceID string  `json:"service" validate:"required"`
-	Host      string  `json:"host" validate:"required"`
-	PubKey    *PubKey `json:"pub_key"`
+	ServiceID string  `json:"service_id" bson:"service_id" validate:"required"`
+	Host      string  `json:"host" bson:"host" validate:"required"`
+	PubKey    *PubKey `json:"pub_key" bson:"pub_key"`
 }
 
 // -------------------- PubKey --------------------
 
 // PubKey represents a public key object including the key and related metadata
 type PubKey struct {
-	Key    *rsa.PublicKey
-	KeyPem string `json:"key_pem" validate:"required"`
-	Alg    string `json:"alg" validate:"required"`
-	Kid    string
+	Key    *rsa.PublicKey `json:"-" bson:"-"`
+	KeyPem string         `json:"key_pem" bson:"key_pem" validate:"required"`
+	Alg    string         `json:"alg" bson:"alg" validate:"required"`
+	Kid    string         `json:"-" bson:"-"`
 }
 
 // LoadKeyFromPem parses "KeyPem" and sets the "Key" and "Kid"

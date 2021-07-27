@@ -74,7 +74,7 @@ func NewWebAdapter(tokenAuth *tokenauth.TokenAuth) WebAdapter {
 
 func main() {
 	// Instantiate a remote ServiceRegLoader to load auth service registration record from auth service
-	serviceLoader := authservice.NewRemoteServiceRegLoader("https://auth.rokmetro.com", nil)
+	serviceLoader := authservice.NewRemoteServiceRegLoader("https://auth.rokmetro.com/services", nil)
 
 	// Instantiate AuthService instance
 	authService, err := authservice.NewAuthService("example", "https://sample.rokmetro.com", serviceLoader)

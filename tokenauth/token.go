@@ -8,9 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"github.com/rokmetro/auth-library/authservice"
 	"github.com/rokmetro/auth-library/authutils"
+)
+
+const (
+	AudRokwire string = "rokwire"
+	ScopeAll   string = "all"
 )
 
 // Claims represents the standard claims included in access tokens
@@ -19,6 +24,7 @@ type Claims struct {
 	jwt.StandardClaims
 	OrgID       string `json:"org_id" validate:"required"`
 	Purpose     string `json:"purpose" validate:"required"`
+	AppID       string `json:"app_id"`
 	Permissions string `json:"permissions"`
 	Scope       string `json:"scope"`
 }
@@ -78,10 +84,10 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	}
 
 	aud := strings.Split(claims.Audience, ",")
-	if !(authutils.ContainsString(aud, t.authService.GetServiceID()) || (t.acceptRokwireTokens && authutils.ContainsString(aud, "rokwire"))) {
+	if !(authutils.ContainsString(aud, t.authService.GetServiceID()) || (t.acceptRokwireTokens && authutils.ContainsString(aud, AudRokwire))) {
 		acceptAuds := t.authService.GetServiceID()
 		if t.acceptRokwireTokens {
-			acceptAuds += " or rokwire"
+			acceptAuds += " or " + AudRokwire
 		}
 
 		return nil, fmt.Errorf("token aud (%s) does not match %s", claims.Audience, acceptAuds)
@@ -208,14 +214,14 @@ func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) err
 	}
 
 	// Grant access for global scope
-	if claims.Scope == "all" {
+	if claims.Scope == ScopeAll {
 		return nil
 	}
 
 	scopes := strings.Split(claims.Scope, " ")
 
 	// Grant access if claims contain service-level global scope
-	serviceAll := t.authService.GetServiceID() + ":all"
+	serviceAll := t.authService.GetServiceID() + ":" + ScopeAll
 	if authutils.ContainsString(scopes, serviceAll) {
 		return nil
 	}

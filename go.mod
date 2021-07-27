@@ -3,11 +3,12 @@ module github.com/rokmetro/auth-library
 go 1.16
 
 require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/aws/aws-sdk-go v1.39.4
 	github.com/go-playground/universal-translator v0.17.0 // indirect
+	github.com/golang-jwt/jwt v3.2.1+incompatible // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
+	github.com/rokmetro/logging-library v0.1.15
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
