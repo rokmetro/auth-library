@@ -133,17 +133,19 @@ func NewCasbinScopeAuthorization(policyPath string, serviceID string) *CasbinSco
 }
 
 // -------------------------- Scope --------------------------
-//Scope represents a scope entity
+// Scope represents a scope entity
 type Scope struct {
 	ServiceID string `json:"service_id" bson:"service_id"`
 	Resource  string `json:"resource" bson:"resource"`
 	Operation string `json:"operation" bson:"operation"`
 }
 
+// String converts the scope to the string representation
 func (s *Scope) String() string {
 	return fmt.Sprintf("%s:%s:%s", s.ServiceID, s.Resource, s.Operation)
 }
 
+// Match returns true if the scope matches the provided "other" scope
 func (s *Scope) Match(other *Scope) bool {
 	if !matchScopeField(s.ServiceID, other.ServiceID) {
 		return false
@@ -160,14 +162,17 @@ func (s *Scope) Match(other *Scope) bool {
 	return true
 }
 
+// IsGlobal returns true if the scope is the global scope
 func (s *Scope) IsGlobal() bool {
 	return s.ServiceID == ScopeAll && s.Resource == ScopeAll && s.Operation == ScopeAll
 }
 
+// IsServiceGlobal returns true if the scope is the service-level global scope
 func (s *Scope) IsServiceGlobal(serviceID string) bool {
 	return s.ServiceID == serviceID && s.Resource == ScopeAll && s.Operation == ScopeAll
 }
 
+// ScopeFromString creates a scope object from the string representation
 func ScopeFromString(scope string) (*Scope, error) {
 	comps := strings.Split(scope, ":")
 	if len(comps) != 3 {
@@ -176,17 +181,12 @@ func ScopeFromString(scope string) (*Scope, error) {
 	return &Scope{ServiceID: comps[0], Resource: comps[1], Operation: comps[2]}, nil
 }
 
+// ScopeServiceGlobal returns the global scope
 func ScopeServiceGlobal(serviceID string) string {
 	return fmt.Sprintf("%s:%s:%s", serviceID, ScopeAll, ScopeAll)
 }
 
-func matchScopeField(x string, y string) bool {
-	if x != y && x != ScopeAll && y != ScopeAll {
-		return false
-	}
-	return true
-}
-
+// CheckScopesGlobals checks if the global or service global scope exists in the list of scope strings
 func CheckScopesGlobals(scopes []string, serviceID string) bool {
 	if len(scopes) == 0 {
 		return false
@@ -200,4 +200,11 @@ func CheckScopesGlobals(scopes []string, serviceID string) bool {
 	// Grant access if claims contain service-level global scope
 	serviceAll := ScopeServiceGlobal(serviceID)
 	return authutils.ContainsString(scopes, serviceAll)
+}
+
+func matchScopeField(x string, y string) bool {
+	if x != y && x != ScopeAll && y != ScopeAll {
+		return false
+	}
+	return true
 }
