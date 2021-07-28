@@ -89,17 +89,18 @@ func NewWebAdapter(tokenAuth *tokenauth.TokenAuth) WebAdapter {
 }
 
 func main() {
+	serviceID := "sample"
 	// Instantiate a remote ServiceRegLoader to load auth service registration record from auth service
 	serviceLoader := authservice.NewRemoteServiceRegLoader("https://auth.rokmetro.com/services", nil)
 
 	// Instantiate AuthService instance
-	authService, err := authservice.NewAuthService("sample", "https://sample.rokmetro.com", serviceLoader)
+	authService, err := authservice.NewAuthService(serviceID, "https://sample.rokmetro.com", serviceLoader)
 	if err != nil {
 		log.Fatalf("Error initializing auth service: %v", err)
 	}
 
 	permissionAuth := authorization.NewCasbinAuthorization("./permissions_authorization_policy.csv")
-	scopeAuth := authorization.NewCasbinAuthorization("./scope_authorization_policy.csv")
+	scopeAuth := authorization.NewCasbinScopeAuthorization("./scope_authorization_policy.csv", serviceID)
 	// Instantiate TokenAuth instance to perform token validation
 	tokenAuth, err := tokenauth.NewTokenAuth(true, authService, permissionAuth, scopeAuth)
 	if err != nil {

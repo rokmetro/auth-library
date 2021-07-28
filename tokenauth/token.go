@@ -16,7 +16,6 @@ import (
 
 const (
 	AudRokwire string = "rokwire"
-	ScopeAll   string = "all"
 )
 
 // Claims represents the standard claims included in access tokens
@@ -213,10 +212,11 @@ func (t *TokenAuth) ValidatePermissionsClaim(claims *Claims, requiredPermissions
 	return fmt.Errorf("required permissions not found: required %v, found %s", requiredPermissions, claims.Permissions)
 }
 
-// AuthorizeRequestPermissions will validate that the provided token claims have access to the requested object
+// AuthorizeRequestPermissions will authorize the request if the permissions claim passes the permissionsAuth
+//	Returns nil on success and error on failure.
 func (t *TokenAuth) AuthorizeRequestPermissions(claims *Claims, request *http.Request) error {
-	if claims == nil {
-		return errors.New("claim empty")
+	if claims == nil || claims.Permissions == "" {
+		return errors.New("permissions claim empty")
 	}
 
 	permissions := strings.Split(claims.Permissions, ",")
@@ -230,60 +230,42 @@ func (t *TokenAuth) AuthorizeRequestPermissions(claims *Claims, request *http.Re
 // 	If an empty required scope is provided, the claims must contain a valid global scope such as 'all' or '{service}:all'
 //	Returns nil on success and error on failure.
 func (t *TokenAuth) ValidateScopeClaim(claims *Claims, requiredScope string) error {
-	if claims.Scope == "" {
+	if claims == nil || claims.Scope == "" {
 		return errors.New("scope claim empty")
 	}
 
-	// Grant access for global scope
-	if claims.Scope == ScopeAll {
-		return nil
-	}
-
 	scopes := strings.Split(claims.Scope, " ")
-
-	// Grant access if claims contain service-level global scope
-	serviceAll := t.authService.GetServiceID() + ":" + ScopeAll
-	if authutils.ContainsString(scopes, serviceAll) {
+	if authorization.CheckScopesGlobals(scopes, t.authService.GetServiceID()) {
 		return nil
 	}
 
-	// Deny access if no required scope is provided
-	if requiredScope == "" {
-		return fmt.Errorf("no required scope")
+	required, err := authorization.ScopeFromString(requiredScope)
+	if err != nil {
+		return fmt.Errorf("invalid required scope: %v", err)
 	}
 
-	// Grant access if claims contain required scope
-	if authutils.ContainsString(scopes, requiredScope) {
-		return nil
+	for _, scopeString := range scopes {
+		scope, err := authorization.ScopeFromString(scopeString)
+		if err != nil {
+			continue
+		}
+
+		if scope.Match(required) {
+			return nil
+		}
 	}
 
 	return fmt.Errorf("required scope not found: required %s, found %s", requiredScope, claims.Scope)
 }
 
-// AuthorizeRequestScope will authorize the request if the provided scopes pass the casbin enforcer
+// AuthorizeRequestScope will authorize the request if the scope claim passes the scopeAuth
 //	Returns nil on success and error on failure.
 func (t *TokenAuth) AuthorizeRequestScope(claims *Claims, request *http.Request) error {
-	if claims == nil {
-		return errors.New("claim empty")
-	}
-
-	if claims.Scope == "" {
+	if claims == nil || claims.Scope == "" {
 		return errors.New("scope claim empty")
 	}
 
-	// Grant access for global scope
-	if claims.Scope == "all" {
-		return nil
-	}
-
 	scopes := strings.Split(claims.Scope, " ")
-
-	// Grant access if claims contain service-level global scope
-	serviceAll := t.authService.GetServiceID() + ":all"
-	if authutils.ContainsString(scopes, serviceAll) {
-		return nil
-	}
-
 	object := request.URL.Path
 	action := request.Method
 

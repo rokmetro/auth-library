@@ -25,7 +25,7 @@ func setupTestTokenAuth(acceptRokwire bool, mockLoader *mocks.ServiceRegLoader) 
 		return nil, fmt.Errorf("error setting up test auth service: %v", err)
 	}
 	permissionAuth := authorization.NewCasbinAuthorization("./test_permissions_authorization_policy.csv")
-	scopeAuth := authorization.NewCasbinAuthorization("./test_scope_authorization_policy.csv")
+	scopeAuth := authorization.NewCasbinScopeAuthorization("./test_scope_authorization_policy.csv", "sample")
 	return tokenauth.NewTokenAuth(acceptRokwire, auth, permissionAuth, scopeAuth)
 }
 
@@ -54,13 +54,13 @@ func getTestClaims(sub string, aud string, orgID string, purpose string, issuer 
 func getSampleValidClaims() *tokenauth.Claims {
 	exp := time.Now().Add(30 * time.Minute)
 	return getTestClaims("test_user_id", "rokwire", "test_org_id", "access",
-		"https://auth.rokmetro.com", "example_permission", "all", exp.Unix())
+		"https://auth.rokmetro.com", "example_permission", "all:all:all", exp.Unix())
 }
 
 func getSampleExpiredClaims() *tokenauth.Claims {
 	exp := time.Now().Add(-5 * time.Minute)
 	return getTestClaims("test_user_id", "rokwire", "test_org_id", "access",
-		"https://auth.rokmetro.com", "example_permission", "all", exp.Unix())
+		"https://auth.rokmetro.com", "example_permission", "all:all:all", exp.Unix())
 }
 
 func TestTokenAuth_CheckToken(t *testing.T) {
@@ -347,7 +347,7 @@ func TestTokenAuth_AuthorizeRequestScope(t *testing.T) {
 	// Valid rokwire
 	validClaims := getSampleValidClaims()
 	validScopeClaims := getSampleValidClaims()
-	validScopeClaims.Scope = "sample:read:test"
+	validScopeClaims.Scope = "sample:test:read"
 	invalidScopeClaims := getSampleValidClaims()
 	invalidScopeClaims.Scope = "none"
 
