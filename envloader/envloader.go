@@ -8,7 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
-	"github.com/rokmetro/logging-library/loglib"
+	"github.com/rokmetro/logging-library/logs"
+	"github.com/rokmetro/logging-library/logutils"
 )
 
 // -------------------- EnvLoader --------------------
@@ -26,7 +27,7 @@ type EnvLoader interface {
 
 // NewEnvLoader initializes and returns the type of EnvLoader specified in the ENV_TYPE environment variable
 //	The default EnvLoader is a LocalEnvLoader
-func NewEnvLoader(version string, logger *loglib.Logger) EnvLoader {
+func NewEnvLoader(version string, logger *logs.Logger) EnvLoader {
 	env := os.Getenv("ENV_TYPE")
 	switch env {
 	case "aws_secrets_manager":
@@ -42,7 +43,7 @@ func NewEnvLoader(version string, logger *loglib.Logger) EnvLoader {
 
 // LocalEnvLoader is an EnvLoader implementation which loads variables from the local system environment
 type LocalEnvLoader struct {
-	logger  *loglib.Logger
+	logger  *logs.Logger
 	version string
 }
 
@@ -67,7 +68,7 @@ func (l *LocalEnvLoader) GetAndLogEnvVar(key string, required bool, sensitive bo
 }
 
 // NewLocalEnvLoader instantiates a new LocalEnvLoader instance
-func NewLocalEnvLoader(version string, logger *loglib.Logger) *LocalEnvLoader {
+func NewLocalEnvLoader(version string, logger *logs.Logger) *LocalEnvLoader {
 	return &LocalEnvLoader{version: version, logger: logger}
 }
 
@@ -75,7 +76,7 @@ func NewLocalEnvLoader(version string, logger *loglib.Logger) *LocalEnvLoader {
 
 // AwsSecretsManagerEnvLoader is an EnvLoader implementation which loads variables from an AWS SecretsManager secret
 type AwsSecretsManagerEnvLoader struct {
-	logger  *loglib.Logger
+	logger  *logs.Logger
 	version string
 
 	secrets map[string]string
@@ -102,7 +103,7 @@ func (l *AwsSecretsManagerEnvLoader) GetAndLogEnvVar(key string, required bool, 
 }
 
 // NewLocalEnvLoader instantiates a new AwsSecretsManagerEnvLoader instance
-func NewAwsSecretsManagerEnvLoader(secretName string, region string, version string, logger *loglib.Logger) *AwsSecretsManagerEnvLoader {
+func NewAwsSecretsManagerEnvLoader(secretName string, region string, version string, logger *logs.Logger) *AwsSecretsManagerEnvLoader {
 	if secretName == "" {
 		logger.Fatal("Secret name cannot be empty")
 	}
@@ -157,12 +158,12 @@ func NewAwsSecretsManagerEnvLoader(secretName string, region string, version str
 	return &AwsSecretsManagerEnvLoader{secrets: secretConfigs, version: version, logger: logger}
 }
 
-func logEnvVar(name string, value string, sensitive bool, version string, logger *loglib.Logger) {
+func logEnvVar(name string, value string, sensitive bool, version string, logger *logs.Logger) {
 	if version == "dev" {
 		if sensitive {
-			logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name})
+			logger.InfoWithFields("ENV_VAR", logutils.Fields{"name": name})
 		} else {
-			logger.InfoWithFields("ENV_VAR", loglib.Fields{"name": name, "value": value})
+			logger.InfoWithFields("ENV_VAR", logutils.Fields{"name": name, "value": value})
 		}
 	}
 }

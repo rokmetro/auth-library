@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/rokmetro/auth-library/envloader"
-	"github.com/rokmetro/logging-library/loglib"
+	"github.com/rokmetro/logging-library/logs"
 )
 
 var (
@@ -17,7 +17,7 @@ func main() {
 		Version = "dev"
 	}
 
-	logger := loglib.NewLogger("sample", nil)
+	logger := logs.NewLogger("sample", nil)
 	envLoader := envloader.NewEnvLoader(Version, logger)
 
 	envVar := envLoader.GetEnvVar("SAMPLE_ENV_VAR", false)
