@@ -9,7 +9,7 @@ require (
 	github.com/golang-jwt/jwt v3.2.1+incompatible
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
-	github.com/rokmetro/logging-library v0.2.0
+	github.com/rokmetro/logging-library v0.2.1
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c

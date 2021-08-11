@@ -52,10 +52,15 @@ func GetPubKeyPem(key *rsa.PublicKey) (string, error) {
 		return "", errors.New("key cannot be nil")
 	}
 
+	pubASN1, err := x509.MarshalPKIXPublicKey(key)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling public key: %v", err)
+	}
+
 	pemdata := pem.EncodeToMemory(
 		&pem.Block{
 			Type:  "RSA PUBLIC KEY",
-			Bytes: x509.MarshalPKCS1PublicKey(key),
+			Bytes: pubASN1,
 		},
 	)
 

@@ -9,7 +9,7 @@ import (
 )
 
 func GetSamplePubKeyPem() string {
-	return `-----BEGIN PUBLIC KEY-----
+	return `-----BEGIN RSA PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq2gWKpPRb2xQRee4OXbg
 KMzGAy8aPcAqgfL8xmi7tozoi917QHL4qi4PHn/7v0K6eAKdq1Vh6dlLmcWbl1Gy
 4IDkf8bDAmUKdezWw6jrnKTW+XZ8S5lsqNSYH07R7aRxJPlugta13fMWphs58LTo
@@ -17,7 +17,7 @@ whQcu1zBCqjEAUooqyWq3XDmic4wbVIp5HvlaayZ7Q+ifDliULxSRqAAUrQZ5DQv
 gtnZ3Dq/93gGbAjnpXl3txfgeQH5NpJN6fFsjm48PFP+Byw5VOslOBh6dtaI6ldR
 Am8DIClWwZ9867p8gpeZpvBsE/sIXUEs/r608oZf6+D3OfIfQUkCq9Knxjgdho8E
 SwIDAQAB
------END PUBLIC KEY-----`
+-----END RSA PUBLIC KEY-----`
 }
 
 func GetSamplePubKey() *authservice.PubKey {

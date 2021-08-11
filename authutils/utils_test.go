@@ -126,3 +126,33 @@ func TestRemoveString(t *testing.T) {
 		})
 	}
 }
+
+func TestGetPubKeyPem(t *testing.T) {
+	sampleKey := testutils.GetSamplePubKey().Key
+	sampleKeyPem := testutils.GetSamplePubKeyPem() + "\n"
+
+	type args struct {
+		key *rsa.PublicKey
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{"return error on nil key", args{sampleKey}, sampleKeyPem, false},
+		{"return error on nil key", args{nil}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := authutils.GetPubKeyPem(tt.args.key)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetPubKeyPem() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("GetPubKeyPem() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
