@@ -304,9 +304,11 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 	}
 
 	validate := validator.New()
-	err = validate.Struct(services)
-	if err != nil {
-		return nil, fmt.Errorf("error validating service data: %v", err)
+	for _, service := range services {
+		err = validate.Struct(service)
+		if err != nil {
+			return nil, fmt.Errorf("error validating service data: %v", err)
+		}
 	}
 
 	serviceErrors := map[string]error{}
