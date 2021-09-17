@@ -27,6 +27,7 @@ type Claims struct {
 	AppID       string `json:"app_id"`
 	Permissions string `json:"permissions"`
 	Scope       string `json:"scope"`
+	Anonymous   bool   `json:"anonymous"`
 }
 
 // TokenAuth contains configurations and helper functions required to validate tokens
