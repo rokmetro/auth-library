@@ -288,13 +288,13 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("error loading services: %d - %s", resp.StatusCode, resp.Body)
-	}
-
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading body of service response: %v", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error loading services: %d - %s", resp.StatusCode, string(body))
 	}
 
 	var services []ServiceReg
@@ -304,13 +304,12 @@ func (r *RemoteServiceRegLoaderImpl) LoadServices() ([]ServiceReg, error) {
 	}
 
 	validate := validator.New()
-	err = validate.Struct(services)
-	if err != nil {
-		return nil, fmt.Errorf("error validating service data: %v", err)
-	}
-
 	serviceErrors := map[string]error{}
 	for _, service := range services {
+		err = validate.Struct(service)
+		if err != nil {
+			return nil, fmt.Errorf("error validating service data: %v", err)
+		}
 		err = service.PubKey.LoadKeyFromPem()
 		if err != nil {
 			serviceErrors[service.ServiceID] = err
