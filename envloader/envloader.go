@@ -25,18 +25,14 @@ type EnvLoader interface {
 	GetAndLogEnvVar(key string, required bool, sensitive bool) string
 }
 
-// NewEnvLoader initializes and returns the type of EnvLoader specified in the ENV_TYPE environment variable
-//	The default EnvLoader is a LocalEnvLoader
+// NewEnvLoader initializes and returns an EnvLoader, using AwsSecretsManagerEnvLoader if configured
 func NewEnvLoader(version string, logger *logs.Logger) EnvLoader {
-	env := os.Getenv("ENV_TYPE")
-	switch env {
-	case "aws_secrets_manager":
-		secretName := os.Getenv("APP_SECRET_ARN")
-		region := os.Getenv("AWS_REGION")
+	secretName := os.Getenv("APP_SECRET_ARN")
+	region := os.Getenv("AWS_REGION")
+	if secretName != "" && region != "" {
 		return NewAwsSecretsManagerEnvLoader(secretName, region, version, logger)
-	default:
-		return NewLocalEnvLoader(version, logger)
 	}
+	return NewLocalEnvLoader(version, logger)
 }
 
 // -------------------- LocalEnvLoader --------------------
