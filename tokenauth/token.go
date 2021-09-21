@@ -28,6 +28,11 @@ type Claims struct {
 	Permissions string `json:"permissions"`
 	Scope       string `json:"scope"`
 	Anonymous   bool   `json:"anonymous"`
+
+	//TODO: Once the new user ID scheme has been adopted across all services these claims should be removed
+	UID   string `json:"uid,omitempty"`
+	Email string `json:"email,omitempty"`
+	Phone string `json:"phone,omitempty"`
 }
 
 // TokenAuth contains configurations and helper functions required to validate tokens
