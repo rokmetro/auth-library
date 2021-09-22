@@ -23,8 +23,9 @@ type Claims struct {
 	// Required Standard Claims: sub, aud, exp, iat
 	jwt.StandardClaims
 	OrgID       string `json:"org_id" validate:"required"`
-	Purpose     string `json:"purpose" validate:"required"`
 	AppID       string `json:"app_id"`
+	Purpose     string `json:"purpose" validate:"required"`
+	AuthType    string `json:"auth_type" validate:"required"`
 	Permissions string `json:"permissions"`
 	Scope       string `json:"scope"`
 	Anonymous   bool   `json:"anonymous"`
@@ -84,6 +85,9 @@ func (t *TokenAuth) CheckToken(token string, purpose string) (*Claims, error) {
 	}
 	if claims.OrgID == "" {
 		return nil, errors.New("token org_id missing")
+	}
+	if claims.AuthType == "" {
+		return nil, errors.New("token auth_type missing")
 	}
 	if claims.Issuer != authServiceReg.Host {
 		return nil, fmt.Errorf("token iss (%s) does not match %s", claims.Issuer, authServiceReg.Host)
