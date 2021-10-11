@@ -16,7 +16,7 @@ func TestCasbinAuthorization_Any(t *testing.T) {
 		wantErr bool
 	}{
 		{"test_permission_casbin_admin_get", args{[]string{"admin", "test"}, "/admin/test", "GET"}, false},
-		{"test_permission_casbin_admin_post", args{[]string{"admin", "test"}, "/admin/test", "GET"}, false},
+		{"test_permission_casbin_admin_post", args{[]string{"admin", "test"}, "/admin/test", "POST"}, false},
 		{"test_permission_casbin_lite_admin", args{[]string{"lite_admin", "test"}, "/admin/test", "GET"}, false},
 		{"test_permission_casbin_lite_admin_no_access", args{[]string{"lite_admin", "test"}, "/admin/test", "DELETE"}, true},
 	}

@@ -42,8 +42,8 @@ func (s *SignatureAuth) Sign(message []byte) (string, error) {
 
 // CheckSignature validates the provided message signature from the given service
 func (s *SignatureAuth) CheckSignature(serviceID string, message []byte, signature string) error {
-	serviceReg, err := s.authService.GetServiceReg(serviceID)
-	if err != nil || serviceReg == nil || serviceReg.PubKey == nil || serviceReg.PubKey.Key == nil {
+	serviceReg, err := s.authService.GetServiceRegWithPubKey(serviceID)
+	if err != nil {
 		return fmt.Errorf("failed to retrieve service pub key: %v", err)
 	}
 

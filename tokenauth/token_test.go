@@ -54,7 +54,7 @@ func getTestClaims(sub string, aud string, orgID string, purpose string, issuer 
 func getSampleValidClaims() *tokenauth.Claims {
 	exp := time.Now().Add(30 * time.Minute)
 	return getTestClaims("test_user_id", "rokwire", "test_org_id", "access",
-		"https://auth.rokmetro.com", "example_permission", "all:all:all", exp.Unix())
+		"https://auth.rokmetro.com", "example_permission,test_permission,sample_admin", "all:all:all", exp.Unix())
 }
 
 func getSampleExpiredClaims() *tokenauth.Claims {
