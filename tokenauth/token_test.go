@@ -39,7 +39,7 @@ func generateTestToken(claims *tokenauth.Claims, key *rsa.PrivateKey) (string, e
 	return token.SignedString(key)
 }
 
-func getTestClaims(sub string, aud string, orgID string, purpose string, issuer string, permissions string, scope string, exp int64) *tokenauth.Claims {
+func getTestClaims(sub string, aud string, orgID string, purpose string, issuer string, permissions string, scope string, auth_type string, exp int64) *tokenauth.Claims {
 	return &tokenauth.Claims{
 		StandardClaims: jwt.StandardClaims{
 			Audience:  aud,
@@ -47,20 +47,20 @@ func getTestClaims(sub string, aud string, orgID string, purpose string, issuer 
 			ExpiresAt: exp,
 			IssuedAt:  time.Now().Unix(),
 			Issuer:    issuer,
-		}, OrgID: orgID, Purpose: purpose, Permissions: permissions, Scope: scope,
+		}, OrgID: orgID, Purpose: purpose, Permissions: permissions, Scope: scope, AuthType: auth_type,
 	}
 }
 
 func getSampleValidClaims() *tokenauth.Claims {
 	exp := time.Now().Add(30 * time.Minute)
 	return getTestClaims("test_user_id", "rokwire", "test_org_id", "access",
-		"https://auth.rokmetro.com", "example_permission,test_permission,sample_admin", "all:all:all", exp.Unix())
+		"https://auth.rokmetro.com", "example_permission,test_permission,sample_admin", "all:all:all", "email", exp.Unix())
 }
 
 func getSampleExpiredClaims() *tokenauth.Claims {
 	exp := time.Now().Add(-5 * time.Minute)
 	return getTestClaims("test_user_id", "rokwire", "test_org_id", "access",
-		"https://auth.rokmetro.com", "example_permission", "all:all:all", exp.Unix())
+		"https://auth.rokmetro.com", "example_permission", "all:all:all", "email", exp.Unix())
 }
 
 func TestTokenAuth_CheckToken(t *testing.T) {
