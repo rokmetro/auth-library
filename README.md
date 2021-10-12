@@ -1,3 +1,6 @@
+# WARNING - MIGRATED TO https://github.com/rokwire/core-auth-library-go
+This library has been moved to the ROKWIRE open-source here: https://github.com/rokwire/core-auth-library-go. Please update the dependencies in all projects using this library to reflect this change. 
+
 # auth-library
 Auth library for a standard auth interface across microservices
 
